@@ -1,0 +1,18 @@
+{
+  "uuid": "b378d562-4235-466c-bf90-138c0e3113eb",
+  "shortName": "health-watchface",
+  "longName": "health-watchface",
+  "companyName": "MakeAwesomeHappen",
+  "versionLabel": "1.0",
+  "sdkVersion": "3",
+  "targetPlatforms": ["aplite", "basalt", "chalk"],
+  "watchapp": {
+    "watchface": true
+  },
+  "appKeys": {
+    "dummy": 0
+  },
+  "resources": {
+    "media": []
+  }
+}
