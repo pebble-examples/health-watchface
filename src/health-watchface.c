@@ -11,6 +11,7 @@ typedef struct {
 static Window *s_main_window;
 static Layer *s_canvas_layer;
 static Time s_curr_time;
+static TextLayer *s_time_layer;
 
 static uint32_t current_average;
 static uint32_t daily_average;
@@ -161,11 +162,32 @@ static void prv_fill_goal_line(GContext *ctx, int32_t current_average, int32_t d
 
 /************************************ UI **************************************/
 
+static void update_time() {
+  // Get a tm structure
+  time_t temp = time(NULL); 
+  struct tm *tick_time = localtime(&temp);
+
+  // Write the current hours and minutes into a buffer
+  static char s_buffer[8];
+  strftime(s_buffer, sizeof(s_buffer), clock_is_24h_style() ?
+                                          "%H:%M%p" : "%I:%M%p", tick_time);
+
+  // Remove 0 from start of time
+  if('0' == s_buffer[0]) {
+    memmove(s_buffer, &s_buffer[1], sizeof(s_buffer)-1);
+  }
+
+  // Display this time on the TextLayer
+  text_layer_set_text(s_time_layer, s_buffer);
+}
+
 static void tick_handler(struct tm *tick_time, TimeUnits changed) {
   // Store time
   s_curr_time.hours = tick_time->tm_hour;
   s_curr_time.hours -= (s_curr_time.hours > 12) ? 12 : 0;
   s_curr_time.minutes = tick_time->tm_min;
+
+  update_time();
 
   // Redraw
   if(s_canvas_layer) {
@@ -206,10 +228,20 @@ static void window_load(Window *window) {
   s_canvas_layer = layer_create(window_bounds);
   layer_set_update_proc(s_canvas_layer, update_proc);
   layer_add_child(window_layer, s_canvas_layer);
+
+  s_time_layer = text_layer_create(
+      GRect(0, PBL_IF_ROUND_ELSE(70, 70), window_bounds.size.w, 50));
+  text_layer_set_background_color(s_time_layer, GColorClear);
+  text_layer_set_text_color(s_time_layer, GColorWhite);
+  text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
+  text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
+
+  layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
 }
 
 static void window_unload(Window *window) {
   layer_destroy(s_canvas_layer);
+  text_layer_destroy(s_time_layer);
 }
 
 /*********************************** App **************************************/
@@ -225,6 +257,7 @@ static void init() {
   window_set_background_color(s_main_window, GColorBlack);
 
   tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
+  update_time();
 }
 
 static void deinit() {
