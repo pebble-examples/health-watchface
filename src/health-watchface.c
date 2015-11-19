@@ -141,6 +141,23 @@ static void prv_fill_outer_ring(GContext *ctx, int32_t current_steps, int32_t da
   #endif
 }
 
+static void prv_fill_goal_line(GContext *ctx, int32_t current_average, int32_t day_average_steps,
+                                int line_length, int line_width, GRect frame, GColor color) {
+  graphics_context_set_stroke_color(ctx, color);
+  GPoint line_outer_point = prv_steps_to_point(current_average, day_average_steps, frame);
+
+  #if defined(PBL_RECT)
+    GPoint line_inner_point = prv_inset_point(line_outer_point, line_length);
+
+  #elif defined(PBL_ROUND)
+    GRect inner_bounds = grect_inset(frame, GEdgeInsets(line_length));
+    GPoint line_inner_point = prv_steps_to_point(current_average, day_average_steps, inner_bounds);
+  #endif
+
+  graphics_context_set_stroke_width(ctx, line_width);
+  graphics_draw_line(ctx, line_inner_point, line_outer_point);
+}
+
 
 /************************************ UI **************************************/
 
@@ -158,7 +175,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits changed) {
 
 static void update_proc(Layer *layer, GContext *ctx) {
   // For Text Purposes
-  current_average += current_average + 1;
+  current_average += 8;
   current_steps += 10;
   daily_average = 1000;
 
@@ -179,6 +196,7 @@ static void update_proc(Layer *layer, GContext *ctx) {
   #endif
 
   prv_fill_outer_ring(ctx, current_steps, daily_average, fill_thickness, bounds, GColorIslamicGreen);
+  prv_fill_goal_line(ctx, current_average, daily_average, 17, 4, bounds, GColorYellow);
 }
 
 static void window_load(Window *window) {
