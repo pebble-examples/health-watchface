@@ -12,7 +12,12 @@ static Window *s_main_window;
 static Layer *s_canvas_layer;
 static Time s_curr_time;
 static TextLayer *s_time_layer;
+static GBitmap *s_blue_shoe, *s_green_shoe;
+static GFont s_zonapro_font_19, s_zonapro_font_27, s_zonapro_font_30;
 
+
+
+static char s_current_steps_buffer[] = "99,999";
 static uint32_t current_average;
 static uint32_t daily_average;
 static uint32_t current_steps;
@@ -159,8 +164,78 @@ static void prv_fill_goal_line(GContext *ctx, int32_t current_average, int32_t d
   graphics_draw_line(ctx, line_inner_point, line_outer_point);
 }
 
+static void draw_steps_value(GRect bounds, GContext *ctx, GColor color, GBitmap *bitmap) {
+  GRect steps_text_box = bounds;
+  GRect shoe_bitmap_box = bounds;
+
+  shoe_bitmap_box.size = GSize(29, 15);
+
+  int16_t text_width = graphics_text_layout_get_content_size(s_current_steps_buffer, 
+                                                              s_zonapro_font_19, 
+                                                              steps_text_box, 
+                                                              GTextOverflowModeTrailingEllipsis, 
+                                                              GTextAlignmentCenter).w;
+  steps_text_box.size = GSize(text_width, 14);
+
+  uint16_t combined_width = shoe_bitmap_box.size.w + 5 + text_width;
+
+  steps_text_box.origin.x = (bounds.size.w / 2) - (combined_width / 2);
+  shoe_bitmap_box.origin.x = (bounds.size.w / 2) + (combined_width / 2) - shoe_bitmap_box.size.w;
+
+  steps_text_box.origin.y = PBL_IF_RECT_ELSE(56, 60);
+  shoe_bitmap_box.origin.y = PBL_IF_RECT_ELSE(60, 65);
+
+  graphics_context_set_text_color(ctx, color);
+  graphics_draw_text(ctx, s_current_steps_buffer, s_zonapro_font_19, 
+    steps_text_box, GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+
+  graphics_draw_bitmap_in_rect(ctx, bitmap, shoe_bitmap_box);
+
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "%d  %d  %d", bounds.size.w, steps_text_box.origin.x, shoe_bitmap_box.origin.x);
+}
+
+static void draw_outer_dots(GRect bounds, GContext *ctx) {
+  GRect frame = grect_inset(bounds, GEdgeInsets(6));
+  #if defined(PBL_RECT)
+    for (int i = 0; i <= 75; i += 25) {
+      GPoint middle = prv_steps_to_point(i, 100, frame);
+      graphics_context_set_fill_color(ctx, GColorDarkGray);
+      if (i != 0) {
+        graphics_fill_circle(ctx, middle, 2);
+      }
+      for (int j = -36; j <= 36; j += 72) {
+        GPoint sides = middle;
+        if (i == 25 || i == 75) {
+          sides.y = middle.y + j;
+        } else {
+          sides.x = middle.x + j;
+        }
+        graphics_fill_circle(ctx, sides, 2);
+      }
+    }
+  #elif defined(PBL_ROUND)
+    // Hours are dots
+    for(int i = 1; i < 12; i++) {
+      GPoint pos = gpoint_from_polar(frame, GOvalScaleModeFitCircle, DEG_TO_TRIGANGLE(i * 360 / 12));
+      graphics_context_set_fill_color(ctx, GColorDarkGray);
+      graphics_fill_circle(ctx, pos, 2);
+    }
+  #endif
+}
+
 
 /************************************ UI **************************************/
+
+static void update_steps(int32_t current_steps) {
+  int thousands = current_steps / 1000;
+  int hundreds = current_steps % 1000;
+  if (thousands > 0) {
+    snprintf(s_current_steps_buffer, sizeof(s_current_steps_buffer), "%d,%03d", thousands, hundreds);
+  } else {
+    snprintf(s_current_steps_buffer, sizeof(s_current_steps_buffer), "%d", hundreds);
+  }
+  APP_LOG(APP_LOG_LEVEL_DEBUG, s_current_steps_buffer);
+}
 
 static void update_time() {
   // Get a tm structure
@@ -196,10 +271,12 @@ static void tick_handler(struct tm *tick_time, TimeUnits changed) {
 }
 
 static void update_proc(Layer *layer, GContext *ctx) {
+  update_steps(current_steps);
+
   // For Text Purposes
-  current_average += 8;
-  current_steps += 10;
-  daily_average = 1000;
+  current_average += 100;
+  current_steps += 80 + (current_steps * 0.01F);
+  daily_average = 20000;
 
   if (current_average > daily_average)
     current_average = 0;
@@ -217,23 +294,44 @@ static void update_proc(Layer *layer, GContext *ctx) {
     const int fill_thickness = (180 - grect_inset(bounds, GEdgeInsets(12)).size.h) / 2;
   #endif
 
-  prv_fill_outer_ring(ctx, current_steps, daily_average, fill_thickness, bounds, GColorIslamicGreen);
+  draw_outer_dots(bounds, ctx);
+
+  GColor scheme;
+  GBitmap *bitmap;
+  if (current_steps >= current_average) {
+    scheme  = GColorIslamicGreen;
+    bitmap = s_green_shoe;
+  } else {
+    scheme = GColorPictonBlue;
+    bitmap = s_blue_shoe;
+  }
+
+  prv_fill_outer_ring(ctx, current_steps, daily_average, fill_thickness, bounds, scheme);
   prv_fill_goal_line(ctx, current_average, daily_average, 17, 4, bounds, GColorYellow);
+
+  draw_steps_value(bounds, ctx, scheme, bitmap);
 }
 
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect window_bounds = layer_get_bounds(window_layer);
 
+  s_green_shoe = gbitmap_create_with_resource(RESOURCE_ID_GREEN_SHOE_LOGO);
+  s_blue_shoe = gbitmap_create_with_resource(RESOURCE_ID_BLUE_SHOE_LOGO);
+
+  s_zonapro_font_19 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_19));
+  s_zonapro_font_27 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_27));
+  s_zonapro_font_30 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_30));
+
   s_canvas_layer = layer_create(window_bounds);
   layer_set_update_proc(s_canvas_layer, update_proc);
   layer_add_child(window_layer, s_canvas_layer);
 
   s_time_layer = text_layer_create(
-      GRect(0, PBL_IF_ROUND_ELSE(70, 70), window_bounds.size.w, 50));
+      GRect(0, PBL_IF_RECT_ELSE(74, 80), window_bounds.size.w, 30));
   text_layer_set_background_color(s_time_layer, GColorClear);
   text_layer_set_text_color(s_time_layer, GColorWhite);
-  text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
+  text_layer_set_font(s_time_layer, PBL_IF_RECT_ELSE(s_zonapro_font_27, s_zonapro_font_30));
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
 
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
@@ -242,6 +340,8 @@ static void window_load(Window *window) {
 static void window_unload(Window *window) {
   layer_destroy(s_canvas_layer);
   text_layer_destroy(s_time_layer);
+  gbitmap_destroy(s_green_shoe);
+  gbitmap_destroy(s_blue_shoe);
 }
 
 /*********************************** App **************************************/
