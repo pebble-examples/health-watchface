@@ -2,32 +2,27 @@
 
 #define MAX(a,b) ((a) > (b) ? a : b)
 #define MIN(a,b) ((a) < (b) ? a : b)
-
-typedef struct {
-  int hours;
-  int minutes;
-} Time;
+#define XDIV(a,b) (1000 * a / b)
+#define DIVX(a) (a / 1000)
+#define RECT_PERIMETER 624 // 144 * 2 + 168 * 2
 
 static Window *s_main_window;
 static Layer *s_canvas_layer;
-static Time s_curr_time;
 static TextLayer *s_time_layer;
 static GBitmap *s_blue_shoe, *s_green_shoe;
 static GFont s_zonapro_font_19, s_zonapro_font_27, s_zonapro_font_30;
 
-
-
 static char s_current_steps_buffer[] = "99,999";
-static uint32_t current_average;
-static uint32_t daily_average;
-static uint32_t current_steps;
+static uint32_t s_current_average;
+static uint32_t s_daily_average;
+static uint32_t s_current_steps;
 
 
 /****************************** Render Functions ******************************/
 
 static GPoint prv_steps_to_point(uint32_t current_steps, uint16_t day_average_steps, GRect frame) {
   #if defined(PBL_RECT)
-    /* e       0       b
+    /* e       a       b
      *   -------------
      *   |           |
      *   |           |
@@ -40,38 +35,36 @@ static GPoint prv_steps_to_point(uint32_t current_steps, uint16_t day_average_st
      * d               c
      */
 
-    if (current_steps <= (day_average_steps * 1.5 / 12)) {
-      // Zone o <-> b
-      return GPoint(frame.origin.x + frame.size.w * 
-                        (0.5 + 0.5 * (current_steps / (day_average_steps * 1.5 / 12))), 
+     // Limits calculated from length along perimeter starting from 'a'
+     const uint32_t limit_b = day_average_steps * 72 / RECT_PERIMETER;
+     const uint32_t limit_c = day_average_steps * 240 / RECT_PERIMETER; 
+     const uint32_t limit_d = day_average_steps * 384 / RECT_PERIMETER;
+     const uint32_t limit_e = day_average_steps * 552 / RECT_PERIMETER;
+
+    if (current_steps <= limit_b) {
+      // Zone a <-> b
+      return GPoint(frame.origin.x + DIVX(frame.size.w * (500 + (500 * current_steps / limit_b))), 
                     frame.origin.y);
-    } else if (current_steps <= (day_average_steps * 4.5 / 12)) {
+    } else if (current_steps <= limit_c) {
       // Zone b <-> c
       return GPoint(frame.origin.x + frame.size.w,
-                    frame.origin.y + frame.size.h *
-                    ((current_steps - (day_average_steps * 1.5 / 12)) / (day_average_steps / 4)));
-    } else if (current_steps <= (day_average_steps * 7.5 / 12)) {
+                    frame.origin.y + DIVX(frame.size.h * XDIV((current_steps - limit_b), (limit_c - limit_b))));
+    } else if (current_steps <= limit_d) {
       // Zone c <-> d
-      return GPoint(frame.origin.x + frame.size.w * 
-                        (1 -  ((current_steps - (day_average_steps * 4.5 / 12)) / 
-                        (day_average_steps / 4))),
+      return GPoint(frame.origin.x + DIVX(frame.size.w * (1000 - XDIV((current_steps - limit_c), (limit_d - limit_c)))),
                     frame.origin.y + frame.size.h);
-    } else if (current_steps <= (day_average_steps * 10.5 / 12)) {
+    } else if (current_steps <= limit_e) {
       // Zone d <-> e
       return GPoint(frame.origin.x,
-                    frame.origin.y + frame.size.h * 
-                        (1 - ((current_steps - (day_average_steps * 7.5 / 12)) / 
-                        (day_average_steps / 4))));
+                    frame.origin.y + DIVX(frame.size.h * (1000 - XDIV((current_steps - limit_d), (limit_e - limit_d)))));
     } else {
       // Zone e <-> 0
-      return GPoint(frame.origin.x + frame.size.w * 
-                        (0.5 *  ((current_steps - (day_average_steps * 10.5 / 12)) / 
-                        (day_average_steps / 8))),
+      return GPoint(frame.origin.x + DIVX(frame.size.w / 2 * XDIV((current_steps - limit_e), (RECT_PERIMETER - limit_e))),
                     frame.origin.y);
     }
   #elif defined(PBL_ROUND)
     return gpoint_from_polar(frame, GOvalScaleModeFitCircle,
-                             DEG_TO_TRIGANGLE(360 * current_steps / day_average_steps));
+                             DEG_TO_TRIGANGLE(DIVX(360 * XDIV(current_steps, day_average_steps))));
   #endif
 }
 
@@ -97,21 +90,21 @@ static void prv_fill_outer_ring(GContext *ctx, int32_t current_steps, int32_t da
     GPoint end_inner_point = prv_inset_point(end_outer_point, fill_thickness);
 
     GPath path = (GPath) {
-      .points = (GPoint *) malloc(sizeof(GPoint) * 20), // change to actual max points needed
+      .points = (GPoint *) malloc(sizeof(GPoint) * 20), // TODO: change to actual max points needed
       .num_points = 0
     };
 
-    int32_t corners[6] = {0,
-                          day_average_steps * 1.5 / 12,
-                          day_average_steps * 4.5 / 12,
-                          day_average_steps * 7.5 / 12,
-                          day_average_steps * 10.5 / 12,
+    const int32_t corners[6] = {0,
+                          day_average_steps * 72 / RECT_PERIMETER,
+                          day_average_steps * 240 / RECT_PERIMETER,
+                          day_average_steps * 384 / RECT_PERIMETER,
+                          day_average_steps * 552 / RECT_PERIMETER,
                           day_average_steps};
 
     // start the path with start_outer_point
     path.points[path.num_points++] = start_outer_point;
     // loop through and add all the corners b/w start and end
-    for (int i = 0; i < (int) ARRAY_LENGTH(corners); i++) {
+    for (uint16_t i = 0; i < ARRAY_LENGTH(corners); i++) {
       if (corners[i] > 0 && corners[i] < current_steps) {
         path.points[path.num_points++] = prv_steps_to_point(corners[i], day_average_steps, 
                                                             outer_bounds);
@@ -190,22 +183,23 @@ static void draw_steps_value(GRect bounds, GContext *ctx, GColor color, GBitmap 
     steps_text_box, GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
   graphics_draw_bitmap_in_rect(ctx, bitmap, shoe_bitmap_box);
-
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "%d  %d  %d", bounds.size.w, steps_text_box.origin.x, shoe_bitmap_box.origin.x);
 }
 
 static void draw_outer_dots(GRect bounds, GContext *ctx) {
   GRect frame = grect_inset(bounds, GEdgeInsets(6));
   #if defined(PBL_RECT)
-    for (int i = 0; i <= 75; i += 25) {
-      GPoint middle = prv_steps_to_point(i, 100, frame);
+    const uint16_t quarter_perimeter = RECT_PERIMETER / 4;
+    // Puts middle dot on each side of screen
+    for (int i = quarter_perimeter; i <= RECT_PERIMETER; i += quarter_perimeter) {
+      GPoint middle = prv_steps_to_point(i, RECT_PERIMETER, frame);
       graphics_context_set_fill_color(ctx, GColorDarkGray);
-      if (i != 0) {
+      if (i != RECT_PERIMETER) {
         graphics_fill_circle(ctx, middle, 2);
       }
+      // Puts two dots around each middle dot
       for (int j = -36; j <= 36; j += 72) {
         GPoint sides = middle;
-        if (i == 25 || i == 75) {
+        if (i == quarter_perimeter || i == (quarter_perimeter * 3)) {
           sides.y = middle.y + j;
         } else {
           sides.x = middle.x + j;
@@ -234,7 +228,6 @@ static void update_steps(int32_t current_steps) {
   } else {
     snprintf(s_current_steps_buffer, sizeof(s_current_steps_buffer), "%d", hundreds);
   }
-  APP_LOG(APP_LOG_LEVEL_DEBUG, s_current_steps_buffer);
 }
 
 static void update_time() {
@@ -257,11 +250,6 @@ static void update_time() {
 }
 
 static void tick_handler(struct tm *tick_time, TimeUnits changed) {
-  // Store time
-  s_curr_time.hours = tick_time->tm_hour;
-  s_curr_time.hours -= (s_curr_time.hours > 12) ? 12 : 0;
-  s_curr_time.minutes = tick_time->tm_min;
-
   update_time();
 
   // Redraw
@@ -271,34 +259,30 @@ static void tick_handler(struct tm *tick_time, TimeUnits changed) {
 }
 
 static void update_proc(Layer *layer, GContext *ctx) {
-  update_steps(current_steps);
+  update_steps(s_current_steps);
 
   // For Text Purposes
-  current_average += 100;
-  current_steps += 80 + (current_steps * 0.01F);
-  daily_average = 20000;
+  s_current_average += 100;
+  s_current_steps += 80 + (s_current_steps * 0.01F);
+  s_daily_average = 20000;
 
-  if (current_average > daily_average)
-    current_average = 0;
+  if (s_current_average > s_daily_average)
+    s_current_average = 0;
 
-  if (current_steps > daily_average)
-    current_steps = 0;
+  if (s_current_steps > s_daily_average)
+    s_current_steps = 0;
   // -----------------
 
   GRect bounds = layer_get_bounds(layer);
 
-  // fill the radial
-  #if defined(PBL_RECT)
-    const int fill_thickness = 12;
-  #elif defined(PBL_ROUND)
-    const int fill_thickness = (180 - grect_inset(bounds, GEdgeInsets(12)).size.h) / 2;
-  #endif
+  const int fill_thickness = PBL_IF_RECT_ELSE(12, (180 - grect_inset(bounds, 
+                                                                     GEdgeInsets(12)).size.h) / 2);
 
   draw_outer_dots(bounds, ctx);
 
   GColor scheme;
   GBitmap *bitmap;
-  if (current_steps >= current_average) {
+  if (s_current_steps >= s_current_average) {
     scheme  = GColorIslamicGreen;
     bitmap = s_green_shoe;
   } else {
@@ -306,8 +290,9 @@ static void update_proc(Layer *layer, GContext *ctx) {
     bitmap = s_blue_shoe;
   }
 
-  prv_fill_outer_ring(ctx, current_steps, daily_average, fill_thickness, bounds, scheme);
-  prv_fill_goal_line(ctx, current_average, daily_average, 17, 4, bounds, GColorYellow);
+  APP_LOG(APP_LOG_LEVEL_WARNING, "STARTED CALL");
+  prv_fill_outer_ring(ctx, s_current_steps, s_daily_average, fill_thickness, bounds, scheme);
+  prv_fill_goal_line(ctx, s_current_average, s_daily_average, 17, 4, bounds, GColorYellow);
 
   draw_steps_value(bounds, ctx, scheme, bitmap);
 }
