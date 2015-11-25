@@ -59,7 +59,7 @@ static GPoint prv_steps_to_point(uint32_t current_steps, uint16_t day_average_st
                     frame.origin.y + DIVX(frame.size.h * (1000 - XDIV((current_steps - limit_d), (limit_e - limit_d)))));
     } else {
       // Zone e <-> 0
-      return GPoint(frame.origin.x + DIVX(frame.size.w / 2 * XDIV((current_steps - limit_e), (RECT_PERIMETER - limit_e))),
+      return GPoint(frame.origin.x + DIVX(frame.size.w / 2 * XDIV((current_steps - limit_e), (day_average_steps - limit_e))),
                     frame.origin.y);
     }
   #elif defined(PBL_ROUND)
@@ -290,7 +290,6 @@ static void update_proc(Layer *layer, GContext *ctx) {
     bitmap = s_blue_shoe;
   }
 
-  APP_LOG(APP_LOG_LEVEL_WARNING, "STARTED CALL");
   prv_fill_outer_ring(ctx, s_current_steps, s_daily_average, fill_thickness, bounds, scheme);
   prv_fill_goal_line(ctx, s_current_average, s_daily_average, 17, 4, bounds, GColorYellow);
 
