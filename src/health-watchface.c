@@ -283,12 +283,14 @@ static void update_proc(Layer *layer, GContext *ctx) {
   GColor scheme;
   GBitmap *bitmap;
   if (s_current_steps >= s_current_average) {
-    scheme  = GColorIslamicGreen;
+    scheme  = GColorMayGreen;
     bitmap = s_green_shoe;
   } else {
     scheme = GColorPictonBlue;
     bitmap = s_blue_shoe;
   }
+
+  graphics_context_set_antialiased(ctx, true);
 
   prv_fill_outer_ring(ctx, s_current_steps, s_daily_average, fill_thickness, bounds, scheme);
   prv_fill_goal_line(ctx, s_current_average, s_daily_average, 17, 4, bounds, GColorYellow);
