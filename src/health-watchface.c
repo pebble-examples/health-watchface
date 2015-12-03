@@ -103,10 +103,10 @@ static void prv_fill_outer_ring(GContext *ctx, int32_t current_steps, int32_t da
     };
 
     const int32_t corners[6] = {0,
-                          day_average_steps * 72 / RECT_PERIMETER,
-                          day_average_steps * 240 / RECT_PERIMETER,
-                          day_average_steps * 384 / RECT_PERIMETER,
-                          day_average_steps * 552 / RECT_PERIMETER,
+                          day_average_steps * TOP_RIGHT / RECT_PERIMETER,
+                          day_average_steps * BOT_RIGHT / RECT_PERIMETER,
+                          day_average_steps * BOT_LEFT / RECT_PERIMETER,
+                          day_average_steps * TOP_LEFT / RECT_PERIMETER,
                           day_average_steps};
 
     // start the path with start_outer_point
