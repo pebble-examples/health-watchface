@@ -1,8 +1,8 @@
 #include <pebble.h>
 
-#define MAX(a,b) ((a) > (b) ? a : b)
-#define MIN(a,b) ((a) < (b) ? a : b)
-#define XDIV(a,b) (1000 * a / b)
+#define MAX(a, b) ((a) > (b) ? a : b)
+#define MIN(a, b) ((a) < (b) ? a : b)
+#define XDIV(a, b) (1000 * a / b)
 #define DIVX(a) (a / 1000)
 #define RECT_PERIMETER 624 // 144 * 2 + 168 * 2
 
@@ -13,9 +13,11 @@ static GBitmap *s_blue_shoe, *s_green_shoe;
 static GFont s_zonapro_font_19, s_zonapro_font_27, s_zonapro_font_30;
 
 static char s_current_steps_buffer[] = "99,999";
-static uint32_t s_current_average;
-static uint32_t s_daily_average;
-static uint32_t s_current_steps;
+static uint32_t *s_curr_day_id;
+static int32_t s_current_steps;
+static uint16_t s_daily_average;
+static uint16_t s_current_average;
+
 
 
 /****************************** Render Functions ******************************/
@@ -209,7 +211,7 @@ static void draw_outer_dots(GRect bounds, GContext *ctx) {
     }
   #elif defined(PBL_ROUND)
     // Hours are dots
-    for(int i = 1; i < 12; i++) {
+    for (int i = 1; i < 12; i++) {
       GPoint pos = gpoint_from_polar(frame, GOvalScaleModeFitCircle, DEG_TO_TRIGANGLE(i * 360 / 12));
       graphics_context_set_fill_color(ctx, GColorDarkGray);
       graphics_fill_circle(ctx, pos, 2);
@@ -220,7 +222,7 @@ static void draw_outer_dots(GRect bounds, GContext *ctx) {
 
 /************************************ UI **************************************/
 
-static void update_steps(int32_t current_steps) {
+static void update_steps_buffer(int32_t current_steps) {
   int thousands = current_steps / 1000;
   int hundreds = current_steps % 1000;
   if (thousands > 0) {
@@ -241,7 +243,7 @@ static void update_time() {
                                           "%H:%M%p" : "%I:%M%p", tick_time);
 
   // Remove 0 from start of time
-  if('0' == s_buffer[0]) {
+  if ('0' == s_buffer[0]) {
     memmove(s_buffer, &s_buffer[1], sizeof(s_buffer)-1);
   }
 
@@ -249,29 +251,51 @@ static void update_time() {
   text_layer_set_text(s_time_layer, s_buffer);
 }
 
+static uint16_t average_steps_to_index(HealthStepAverages *avg_steps, uint16_t step_index) {
+  uint16_t daily_average_steps = 0;
+  for (int i = 0; i < step_index; i++) {
+    if (avg_steps->average[i] != HEALTH_STEP_AVERAGES_UNKNOWN) {
+      daily_average_steps += avg_steps->average[i];
+    }
+  }
+  return daily_average_steps;
+}
+
+static void update_steps_averages(struct tm *curr_time, bool init) {
+  HealthStepAverages *averages = malloc(sizeof(HealthStepAverages));
+  health_service_get_step_averages(TODAY, averages);
+
+  // Update current average throughout day (15 min steps as per api)
+  if (curr_time->tm_min % 15 == 0 || init) {
+    s_current_average = average_steps_to_index(averages, 
+                                               curr_time->tm_hour * 4 + (curr_time->tm_min / 15));
+  }
+
+  // Set up new day's total average steps
+  if ((curr_time->tm_hour == 0 && curr_time->tm_min == 0) || init) {
+    s_daily_average = average_steps_to_index(averages, HEALTH_NUM_STEP_AVERAGES);
+  }
+
+  free(averages);
+}
+
 static void tick_handler(struct tm *tick_time, TimeUnits changed) {
   update_time();
+  update_steps_averages(tick_time, false);
 
   // Redraw
-  if(s_canvas_layer) {
+  if (s_canvas_layer) {
     layer_mark_dirty(s_canvas_layer);
   }
 }
 
+static void activity_steps_handler(HealthEventType event, HealthEventData *data,
+                                   void *context) {
+  health_service_metric_peek(HealthMetricStepCount, s_curr_day_id, 1, &s_current_steps);
+}
+
 static void update_proc(Layer *layer, GContext *ctx) {
-  update_steps(s_current_steps);
-
-  // For Text Purposes
-  s_current_average += 100;
-  s_current_steps += 80 + (s_current_steps * 0.01F);
-  s_daily_average = 20000;
-
-  if (s_current_average > s_daily_average)
-    s_current_average = 0;
-
-  if (s_current_steps > s_daily_average)
-    s_current_steps = 0;
-  // -----------------
+  update_steps_buffer(s_current_steps);
 
   GRect bounds = layer_get_bounds(layer);
 
@@ -280,10 +304,14 @@ static void update_proc(Layer *layer, GContext *ctx) {
 
   draw_outer_dots(bounds, ctx);
 
+  if (s_current_steps > s_daily_average) {
+    s_daily_average = s_current_steps;
+  }
+
   GColor scheme;
   GBitmap *bitmap;
-  if (s_current_steps >= s_current_average) {
-    scheme  = GColorMayGreen;
+  if (s_current_steps >= (int)s_current_average) {
+    scheme  = GColorIslamicGreen;
     bitmap = s_green_shoe;
   } else {
     scheme = GColorPictonBlue;
@@ -342,8 +370,18 @@ static void init() {
   window_stack_push(s_main_window, true);
   window_set_background_color(s_main_window, GColorBlack);
 
-  tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
+  tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
   update_time();
+
+  health_service_events_subscribe(activity_steps_handler, NULL);
+
+  // initialize current step values
+  health_service_metric_peek(HealthMetricStepCount, s_curr_day_id, 1, &s_current_steps);
+
+  // initialize average steps values
+  const time_t now = time(NULL);
+  struct tm *time_now = localtime(&now);
+  update_steps_averages(time_now, true);
 }
 
 static void deinit() {
