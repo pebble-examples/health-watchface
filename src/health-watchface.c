@@ -1,10 +1,12 @@
 #include <pebble.h>
 
+#define DISP_ROWS PBL_IF_RECT_ELSE(144, 180)
+#define DISP_COLS PBL_IF_RECT_ELSE(168, 180)
 #define MAX(a, b) ((a) > (b) ? a : b)
 #define MIN(a, b) ((a) < (b) ? a : b)
 #define XDIV(a, b) (1000 * a / b)
 #define DIVX(a) (a / 1000)
-#define RECT_PERIMETER 624 // 144 * 2 + 168 * 2
+#define RECT_PERIMETER ((DISP_ROWS + DISP_COLS) * 2)
 
 static Window *s_main_window;
 static Layer *s_canvas_layer;
@@ -78,8 +80,8 @@ static GPoint prv_steps_to_point(uint32_t current_steps, uint16_t day_average_st
 static GPoint prv_inset_point(GPoint outer_point, int inset_amount) {
   // Insets the given point by the specified amount
   return (GPoint) {
-    .x = MAX(inset_amount - 1, MIN(outer_point.x, 144 - inset_amount)),
-    .y = MAX(inset_amount - 1, MIN(outer_point.y, 168 - inset_amount))
+    .x = MAX(inset_amount - 1, MIN(outer_point.x, DISP_ROWS - inset_amount)),
+    .y = MAX(inset_amount - 1, MIN(outer_point.y, DISP_COLS - inset_amount))
   };
 }
 #endif
