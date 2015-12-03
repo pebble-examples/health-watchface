@@ -10,7 +10,7 @@ static Window *s_main_window;
 static Layer *s_canvas_layer;
 static TextLayer *s_time_layer;
 static GBitmap *s_blue_shoe, *s_green_shoe;
-static GFont s_zonapro_font_19, s_zonapro_font_27, s_zonapro_font_30;
+static GFont s_zonapro_font_small, s_zonapro_font_big;
 
 static char s_current_steps_buffer[] = "99,999";
 static uint32_t *s_curr_day_id;
@@ -18,12 +18,16 @@ static int32_t s_current_steps;
 static uint16_t s_daily_average;
 static uint16_t s_current_average;
 
+static const uint32_t TOP_RIGHT = 72;
+static const uint32_t BOT_RIGHT = 240;
+static const uint32_t BOT_LEFT = 384;
+static const uint32_t TOP_LEFT = 552;
 
 
 /****************************** Render Functions ******************************/
 
 static GPoint prv_steps_to_point(uint32_t current_steps, uint16_t day_average_steps, GRect frame) {
-  #if defined(PBL_RECT)
+#if defined(PBL_RECT)
     /* e       a       b
      *   -------------
      *   |           |
@@ -38,10 +42,10 @@ static GPoint prv_steps_to_point(uint32_t current_steps, uint16_t day_average_st
      */
 
      // Limits calculated from length along perimeter starting from 'a'
-     const uint32_t limit_b = day_average_steps * 72 / RECT_PERIMETER;
-     const uint32_t limit_c = day_average_steps * 240 / RECT_PERIMETER; 
-     const uint32_t limit_d = day_average_steps * 384 / RECT_PERIMETER;
-     const uint32_t limit_e = day_average_steps * 552 / RECT_PERIMETER;
+     const uint32_t limit_b = day_average_steps * TOP_RIGHT / RECT_PERIMETER;
+     const uint32_t limit_c = day_average_steps * BOT_RIGHT / RECT_PERIMETER; 
+     const uint32_t limit_d = day_average_steps * BOT_LEFT / RECT_PERIMETER;
+     const uint32_t limit_e = day_average_steps * TOP_LEFT / RECT_PERIMETER;
 
     if (current_steps <= limit_b) {
       // Zone a <-> b
@@ -64,10 +68,10 @@ static GPoint prv_steps_to_point(uint32_t current_steps, uint16_t day_average_st
       return GPoint(frame.origin.x + DIVX(frame.size.w / 2 * XDIV((current_steps - limit_e), (day_average_steps - limit_e))),
                     frame.origin.y);
     }
-  #elif defined(PBL_ROUND)
+#elif defined(PBL_ROUND)
     return gpoint_from_polar(frame, GOvalScaleModeFitCircle,
                              DEG_TO_TRIGANGLE(DIVX(360 * XDIV(current_steps, day_average_steps))));
-  #endif
+#endif
 }
 
 #if defined(PBL_RECT)
@@ -83,7 +87,7 @@ static GPoint prv_inset_point(GPoint outer_point, int inset_amount) {
 static void prv_fill_outer_ring(GContext *ctx, int32_t current_steps, int32_t day_average_steps,
                                 int fill_thickness, GRect frame, GColor color) {
   graphics_context_set_fill_color(ctx, color);
-  #if defined(PBL_RECT)
+#if defined(PBL_RECT)
     GRect outer_bounds = frame;
 
     GPoint start_outer_point = prv_steps_to_point(0, day_average_steps, outer_bounds);
@@ -132,14 +136,13 @@ static void prv_fill_outer_ring(GContext *ctx, int32_t current_steps, int32_t da
 
     graphics_context_set_stroke_color(ctx, color);
     gpath_draw_outline(ctx, &path);
-    graphics_context_set_stroke_color(ctx, GColorBlack);
 
     free(path.points);
-  #elif defined(PBL_ROUND)
+#elif defined(PBL_ROUND)
     graphics_fill_radial(ctx, frame, GOvalScaleModeFitCircle, fill_thickness,
                          DEG_TO_TRIGANGLE(0),
                          DEG_TO_TRIGANGLE(360 * current_steps / day_average_steps));
-  #endif
+#endif
 }
 
 static void prv_fill_goal_line(GContext *ctx, int32_t current_average, int32_t day_average_steps,
@@ -147,13 +150,13 @@ static void prv_fill_goal_line(GContext *ctx, int32_t current_average, int32_t d
   graphics_context_set_stroke_color(ctx, color);
   GPoint line_outer_point = prv_steps_to_point(current_average, day_average_steps, frame);
 
-  #if defined(PBL_RECT)
+#if defined(PBL_RECT)
     GPoint line_inner_point = prv_inset_point(line_outer_point, line_length);
 
-  #elif defined(PBL_ROUND)
+#elif defined(PBL_ROUND)
     GRect inner_bounds = grect_inset(frame, GEdgeInsets(line_length));
     GPoint line_inner_point = prv_steps_to_point(current_average, day_average_steps, inner_bounds);
-  #endif
+#endif
 
   graphics_context_set_stroke_width(ctx, line_width);
   graphics_draw_line(ctx, line_inner_point, line_outer_point);
@@ -163,16 +166,18 @@ static void draw_steps_value(GRect bounds, GContext *ctx, GColor color, GBitmap 
   GRect steps_text_box = bounds;
   GRect shoe_bitmap_box = bounds;
 
-  shoe_bitmap_box.size = GSize(29, 15);
+  shoe_bitmap_box.size = gbitmap_get_bounds(s_green_shoe).size;
 
   int16_t text_width = graphics_text_layout_get_content_size(s_current_steps_buffer, 
-                                                              s_zonapro_font_19, 
+                                                              s_zonapro_font_small, 
                                                               steps_text_box, 
                                                               GTextOverflowModeTrailingEllipsis, 
                                                               GTextAlignmentCenter).w;
-  steps_text_box.size = GSize(text_width, 14);
+  const int16_t FONT_HEIGHT = 14;
+  steps_text_box.size = GSize(text_width, FONT_HEIGHT);
 
-  uint16_t combined_width = shoe_bitmap_box.size.w + 5 + text_width;
+  const uint16_t PADDING = 5;
+  uint16_t combined_width = shoe_bitmap_box.size.w + PADDING + text_width;
 
   steps_text_box.origin.x = (bounds.size.w / 2) - (combined_width / 2);
   shoe_bitmap_box.origin.x = (bounds.size.w / 2) + (combined_width / 2) - shoe_bitmap_box.size.w;
@@ -181,15 +186,15 @@ static void draw_steps_value(GRect bounds, GContext *ctx, GColor color, GBitmap 
   shoe_bitmap_box.origin.y = PBL_IF_RECT_ELSE(60, 65);
 
   graphics_context_set_text_color(ctx, color);
-  graphics_draw_text(ctx, s_current_steps_buffer, s_zonapro_font_19, 
-    steps_text_box, GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+  graphics_draw_text(ctx, s_current_steps_buffer, s_zonapro_font_small, 
+      steps_text_box, GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
   graphics_draw_bitmap_in_rect(ctx, bitmap, shoe_bitmap_box);
 }
 
 static void draw_outer_dots(GRect bounds, GContext *ctx) {
   GRect frame = grect_inset(bounds, GEdgeInsets(6));
-  #if defined(PBL_RECT)
+#if defined(PBL_RECT)
     const uint16_t quarter_perimeter = RECT_PERIMETER / 4;
     // Puts middle dot on each side of screen
     for (int i = quarter_perimeter; i <= RECT_PERIMETER; i += quarter_perimeter) {
@@ -209,22 +214,23 @@ static void draw_outer_dots(GRect bounds, GContext *ctx) {
         graphics_fill_circle(ctx, sides, 2);
       }
     }
-  #elif defined(PBL_ROUND)
-    // Hours are dots
-    for (int i = 1; i < 12; i++) {
-      GPoint pos = gpoint_from_polar(frame, GOvalScaleModeFitCircle, DEG_TO_TRIGANGLE(i * 360 / 12));
+#elif defined(PBL_ROUND)
+    // Outer dots placed along inside circumference
+    const int NUM_DOTS = 12;
+    for (int i = 1; i < NUM_DOTS; i++) {
+      GPoint pos = gpoint_from_polar(frame, GOvalScaleModeFitCircle, DEG_TO_TRIGANGLE(i * 360 / NUM_DOTS));
       graphics_context_set_fill_color(ctx, GColorDarkGray);
       graphics_fill_circle(ctx, pos, 2);
     }
-  #endif
+#endif
 }
 
 
 /************************************ UI **************************************/
 
-static void update_steps_buffer(int32_t current_steps) {
-  int thousands = current_steps / 1000;
-  int hundreds = current_steps % 1000;
+static void update_steps_buffer() {
+  int thousands = s_current_steps / 1000;
+  int hundreds = s_current_steps % 1000;
   if (thousands > 0) {
     snprintf(s_current_steps_buffer, sizeof(s_current_steps_buffer), "%d,%03d", thousands, hundreds);
   } else {
@@ -261,27 +267,33 @@ static uint16_t average_steps_to_index(HealthStepAverages *avg_steps, uint16_t s
   return daily_average_steps;
 }
 
-static void update_steps_averages(struct tm *curr_time, bool init) {
+static void update_steps_averages(struct tm *curr_time) {
+  static bool done_init = false;
   HealthStepAverages *averages = malloc(sizeof(HealthStepAverages));
   health_service_get_step_averages(TODAY, averages);
 
   // Update current average throughout day (15 min steps as per api)
-  if (curr_time->tm_min % 15 == 0 || init) {
+  if (curr_time->tm_min % 15 == 0 || !done_init) {
     s_current_average = average_steps_to_index(averages, 
                                                curr_time->tm_hour * 4 + (curr_time->tm_min / 15));
   }
 
   // Set up new day's total average steps
-  if ((curr_time->tm_hour == 0 && curr_time->tm_min == 0) || init) {
+  if ((curr_time->tm_hour == 0 && curr_time->tm_min == 0) || !done_init) {
     s_daily_average = average_steps_to_index(averages, HEALTH_NUM_STEP_AVERAGES);
-  }
 
+    if (done_init) {
+      s_current_steps = 0;
+      update_steps_buffer();
+    }
+  }
   free(averages);
+  done_init = true;
 }
 
 static void tick_handler(struct tm *tick_time, TimeUnits changed) {
   update_time();
-  update_steps_averages(tick_time, false);
+  update_steps_averages(tick_time);
 
   // Redraw
   if (s_canvas_layer) {
@@ -292,11 +304,10 @@ static void tick_handler(struct tm *tick_time, TimeUnits changed) {
 static void activity_steps_handler(HealthEventType event, HealthEventData *data,
                                    void *context) {
   health_service_metric_peek(HealthMetricStepCount, s_curr_day_id, 1, &s_current_steps);
+  update_steps_buffer();
 }
 
 static void update_proc(Layer *layer, GContext *ctx) {
-  update_steps_buffer(s_current_steps);
-
   GRect bounds = layer_get_bounds(layer);
 
   const int fill_thickness = PBL_IF_RECT_ELSE(12, (180 - grect_inset(bounds, 
@@ -333,9 +344,12 @@ static void window_load(Window *window) {
   s_green_shoe = gbitmap_create_with_resource(RESOURCE_ID_GREEN_SHOE_LOGO);
   s_blue_shoe = gbitmap_create_with_resource(RESOURCE_ID_BLUE_SHOE_LOGO);
 
-  s_zonapro_font_19 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_19));
-  s_zonapro_font_27 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_27));
-  s_zonapro_font_30 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_30));
+  s_zonapro_font_small = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_19));
+#if defined(PBL_RECT)
+  s_zonapro_font_big = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_27));
+#else
+  s_zonapro_font_big = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_30));
+#endif
 
   s_canvas_layer = layer_create(window_bounds);
   layer_set_update_proc(s_canvas_layer, update_proc);
@@ -345,7 +359,7 @@ static void window_load(Window *window) {
       GRect(0, PBL_IF_RECT_ELSE(74, 80), window_bounds.size.w, 30));
   text_layer_set_background_color(s_time_layer, GColorClear);
   text_layer_set_text_color(s_time_layer, GColorWhite);
-  text_layer_set_font(s_time_layer, PBL_IF_RECT_ELSE(s_zonapro_font_27, s_zonapro_font_30));
+  text_layer_set_font(s_time_layer, PBL_IF_RECT_ELSE(s_zonapro_font_big, s_zonapro_font_big));
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
 
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
@@ -377,11 +391,12 @@ static void init() {
 
   // initialize current step values
   health_service_metric_peek(HealthMetricStepCount, s_curr_day_id, 1, &s_current_steps);
+  update_steps_buffer();
 
   // initialize average steps values
   const time_t now = time(NULL);
   struct tm *time_now = localtime(&now);
-  update_steps_averages(time_now, true);
+  update_steps_averages(time_now);
 }
 
 static void deinit() {
