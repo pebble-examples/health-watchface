@@ -8,6 +8,9 @@
 #define DIVX(a) (a / 1000)
 #define RECT_PERIMETER ((DISP_ROWS + DISP_COLS) * 2)
 
+#define FAKE_AVERAGE 1200
+#define FAKE_DAILY_AVERAGE 2300
+
 static Window *s_main_window;
 static Layer *s_canvas_layer;
 static TextLayer *s_time_layer;
@@ -259,37 +262,39 @@ static void update_time() {
   text_layer_set_text(s_time_layer, s_buffer);
 }
 
-static uint16_t average_steps_to_index(HealthStepAverages *avg_steps, uint16_t step_index) {
-  uint16_t daily_average_steps = 0;
-  for (int i = 0; i < step_index; i++) {
-    if (avg_steps->average[i] != HEALTH_STEP_AVERAGES_UNKNOWN) {
-      daily_average_steps += avg_steps->average[i];
-    }
-  }
-  return daily_average_steps;
-}
+// static uint16_t average_steps_to_index(HealthStepAverages *avg_steps, uint16_t step_index) {
+//   uint16_t daily_average_steps = 0;
+//   for (int i = 0; i < step_index; i++) {
+//     if (avg_steps->average[i] != HEALTH_STEP_AVERAGES_UNKNOWN) {
+//       daily_average_steps += avg_steps->average[i];
+//     }
+//   }
+//   return daily_average_steps;
+// }
 
 static void update_steps_averages(struct tm *curr_time) {
   static bool done_init = false;
-  HealthStepAverages *averages = malloc(sizeof(HealthStepAverages));
-  health_service_get_step_averages(TODAY, averages);
+  // HealthStepAverages *averages = malloc(sizeof(HealthStepAverages));
+  // health_service_get_step_averages(TODAY, averages);
 
   // Update current average throughout day (15 min steps as per api)
   if (curr_time->tm_min % 15 == 0 || !done_init) {
-    s_current_average = average_steps_to_index(averages, 
-                                               curr_time->tm_hour * 4 + (curr_time->tm_min / 15));
+    // s_current_average = average_steps_to_index(averages, 
+    //                                            curr_time->tm_hour * 4 + (curr_time->tm_min / 15));
+    s_current_average = FAKE_AVERAGE;
   }
 
   // Set up new day's total average steps
   if ((curr_time->tm_hour == 0 && curr_time->tm_min == 0) || !done_init) {
-    s_daily_average = average_steps_to_index(averages, HEALTH_NUM_STEP_AVERAGES);
+    // s_daily_average = average_steps_to_index(averages, HEALTH_NUM_STEP_AVERAGES);
+    s_daily_average = FAKE_DAILY_AVERAGE;
 
     if (done_init) {
       s_current_steps = 0;
       update_steps_buffer();
     }
   }
-  free(averages);
+  // free(averages);
   done_init = true;
 }
 
@@ -303,9 +308,9 @@ static void tick_handler(struct tm *tick_time, TimeUnits changed) {
   }
 }
 
-static void activity_steps_handler(HealthEventType event, HealthEventData *data,
-                                   void *context) {
-  health_service_metric_peek(HealthMetricStepCount, s_curr_day_id, 1, &s_current_steps);
+static void activity_steps_handler(HealthEventType event, void *context) {
+  // health_service_metric_peek(HealthMetricStepCount, s_curr_day_id, 1, &s_current_steps);
+  s_current_steps = health_service_sum_today(HealthMetricStepCount);
   update_steps_buffer();
 }
 
@@ -392,7 +397,8 @@ static void init() {
   health_service_events_subscribe(activity_steps_handler, NULL);
 
   // initialize current step values
-  health_service_metric_peek(HealthMetricStepCount, s_curr_day_id, 1, &s_current_steps);
+  // health_service_metric_peek(HealthMetricStepCount, s_curr_day_id, 1, &s_current_steps);
+  s_current_steps = health_service_sum_today(HealthMetricStepCount);
   update_steps_buffer();
 
   // initialize average steps values
