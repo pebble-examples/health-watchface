@@ -291,19 +291,15 @@ static void update_average(bool daily) {
     if(mask == HealthServiceAccessibilityMaskAvailable) {
       // Data is available, read day's sum
       data[day] = (int)health_service_sum(HealthMetricStepCount, start, end);
-      APP_LOG(APP_LOG_LEVEL_INFO, "%d steps for %d days ago (daily? %d)", data[day], day, (int)daily);
     } else {
-      APP_LOG(APP_LOG_LEVEL_INFO, "No data available for %d days ago", day);
       data[day] = 0;
     }
   }
 
   if(daily) {
     s_daily_average = calculate_average(data, PAST_DAYS_CONSIDERED);
-    APP_LOG(APP_LOG_LEVEL_INFO, "Daily average is %d", s_daily_average);
   } else {
     s_current_average = calculate_average(data, PAST_DAYS_CONSIDERED);
-    APP_LOG(APP_LOG_LEVEL_INFO, "Current average is %d", s_current_average);
   }
   free(data);
 }
@@ -427,7 +423,6 @@ static void init() {
 
   // initialize current step values
   s_current_steps = health_service_sum_today(HealthMetricStepCount);
-  APP_LOG(APP_LOG_LEVEL_INFO, "Steps so far today: %d", (int)s_current_steps);
   update_steps_buffer();
 
   // initialize average steps values
