@@ -14,7 +14,7 @@ static Window *s_main_window;
 static Layer *s_canvas_layer;
 static TextLayer *s_time_layer;
 static GBitmap *s_blue_shoe, *s_green_shoe;
-static GFont s_zonapro_font_small, s_zonapro_font_big;
+static GFont s_font_small, s_font_big;
 
 static char s_current_steps_buffer[] = "99,999";
 static uint32_t *s_curr_day_id;
@@ -172,7 +172,7 @@ static void draw_steps_value(GRect bounds, GContext *ctx, GColor color, GBitmap 
   shoe_bitmap_box.size = gbitmap_get_bounds(s_green_shoe).size;
 
   int16_t text_width = graphics_text_layout_get_content_size(s_current_steps_buffer, 
-                                                              s_zonapro_font_small, 
+                                                              s_font_small, 
                                                               steps_text_box, 
                                                               GTextOverflowModeTrailingEllipsis, 
                                                               GTextAlignmentCenter).w;
@@ -189,7 +189,7 @@ static void draw_steps_value(GRect bounds, GContext *ctx, GColor color, GBitmap 
   shoe_bitmap_box.origin.y = PBL_IF_RECT_ELSE(60, 65);
 
   graphics_context_set_text_color(ctx, color);
-  graphics_draw_text(ctx, s_current_steps_buffer, s_zonapro_font_small, 
+  graphics_draw_text(ctx, s_current_steps_buffer, s_font_small, 
       steps_text_box, GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
   graphics_draw_bitmap_in_rect(ctx, bitmap, shoe_bitmap_box);
@@ -376,11 +376,11 @@ static void window_load(Window *window) {
   s_green_shoe = gbitmap_create_with_resource(RESOURCE_ID_GREEN_SHOE_LOGO);
   s_blue_shoe = gbitmap_create_with_resource(RESOURCE_ID_BLUE_SHOE_LOGO);
 
-  s_zonapro_font_small = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_19));
+  s_font_small = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
 #if defined(PBL_RECT)
-  s_zonapro_font_big = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_27));
+  s_font_big = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
 #else
-  s_zonapro_font_big = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_30));
+  s_font_big = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
 #endif
 
   s_canvas_layer = layer_create(window_bounds);
@@ -391,7 +391,7 @@ static void window_load(Window *window) {
       GRect(0, PBL_IF_RECT_ELSE(74, 80), window_bounds.size.w, 30));
   text_layer_set_background_color(s_time_layer, GColorClear);
   text_layer_set_text_color(s_time_layer, GColorWhite);
-  text_layer_set_font(s_time_layer, PBL_IF_RECT_ELSE(s_zonapro_font_big, s_zonapro_font_big));
+  text_layer_set_font(s_time_layer, PBL_IF_RECT_ELSE(s_font_big, s_font_big));
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
 
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));

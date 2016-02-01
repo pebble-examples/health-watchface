@@ -23,21 +23,6 @@
         "type": "png",
         "name": "GREEN_SHOE_LOGO",
         "file": "green_shoe.png"
-      },
-      {
-        "type": "font",
-        "name": "ZONAPRO_BOLD_FONT_19",
-        "file": "ZonaPro-Bold.ttf"
-      },
-      {
-        "type": "font",
-        "name": "ZONAPRO_BOLD_FONT_27",
-        "file": "ZonaPro-Bold.ttf"
-      },
-      {
-        "type": "font",
-        "name": "ZONAPRO_BOLD_FONT_30",
-        "file": "ZonaPro-Bold.ttf"
       }
     ]
   }
