@@ -8,8 +8,7 @@
 #define DIVX(a) (a / 1000)
 #define RECT_PERIMETER ((DISP_ROWS + DISP_COLS) * 2)
 
-#define FAKE_AVERAGE 1200
-#define FAKE_DAILY_AVERAGE 2300
+#define PAST_DAYS_CONSIDERED 7
 
 static Window *s_main_window;
 static Layer *s_canvas_layer;
@@ -157,7 +156,6 @@ static void prv_fill_goal_line(GContext *ctx, int32_t current_average, int32_t d
 
 #if defined(PBL_RECT)
     GPoint line_inner_point = prv_inset_point(line_outer_point, line_length);
-
 #elif defined(PBL_ROUND)
     GRect inner_bounds = grect_inset(frame, GEdgeInsets(line_length));
     GPoint line_inner_point = prv_steps_to_point(current_average, day_average_steps, inner_bounds);
@@ -262,39 +260,71 @@ static void update_time() {
   text_layer_set_text(s_time_layer, s_buffer);
 }
 
-// static uint16_t average_steps_to_index(HealthStepAverages *avg_steps, uint16_t step_index) {
-//   uint16_t daily_average_steps = 0;
-//   for (int i = 0; i < step_index; i++) {
-//     if (avg_steps->average[i] != HEALTH_STEP_AVERAGES_UNKNOWN) {
-//       daily_average_steps += avg_steps->average[i];
-//     }
-//   }
-//   return daily_average_steps;
-// }
+static int calculate_average(int *data, int num_items) {
+  int result = 0;
+
+  int num_valid_items = 0;
+  for(int i = 0; i < num_items; i++) {
+    if(data[i] > 0) {
+      result += data[i];
+      num_valid_items++;
+    }
+  }
+  return result / num_valid_items;
+}
+
+static void update_average(bool daily) {
+  // Average of steps taken so far today over the last PAST_DAYS_CONSIDERED days
+  int *data = (int*)malloc(PAST_DAYS_CONSIDERED * sizeof(int));
+
+  for(int day = 0; day < PAST_DAYS_CONSIDERED; day++) {
+    time_t start = time_start_of_today() - (day * (24 * SECONDS_PER_HOUR));
+
+    time_t end;
+    if(daily) {
+      end = start + (24 * SECONDS_PER_HOUR);
+    } else {
+      end = start + (time(NULL) - time_start_of_today());
+    } 
+
+    HealthServiceAccessibilityMask mask = health_service_metric_accessible(HealthMetricStepCount, start, end);
+    if(mask == HealthServiceAccessibilityMaskAvailable) {
+      // Data is available, read day's sum
+      data[day] = (int)health_service_sum(HealthMetricStepCount, start, end);
+      APP_LOG(APP_LOG_LEVEL_INFO, "%d steps for %d days ago (daily? %d)", data[day], day, (int)daily);
+    } else {
+      APP_LOG(APP_LOG_LEVEL_INFO, "No data available for %d days ago", day);
+      data[day] = 0;
+    }
+  }
+
+  if(daily) {
+    s_daily_average = calculate_average(data, PAST_DAYS_CONSIDERED);
+    APP_LOG(APP_LOG_LEVEL_INFO, "Daily average is %d", s_daily_average);
+  } else {
+    s_current_average = calculate_average(data, PAST_DAYS_CONSIDERED);
+    APP_LOG(APP_LOG_LEVEL_INFO, "Current average is %d", s_current_average);
+  }
+  free(data);
+}
 
 static void update_steps_averages(struct tm *curr_time) {
   static bool done_init = false;
-  // HealthStepAverages *averages = malloc(sizeof(HealthStepAverages));
-  // health_service_get_step_averages(TODAY, averages);
-
+  
   // Update current average throughout day (15 min steps as per api)
   if (curr_time->tm_min % 15 == 0 || !done_init) {
-    // s_current_average = average_steps_to_index(averages, 
-    //                                            curr_time->tm_hour * 4 + (curr_time->tm_min / 15));
-    s_current_average = FAKE_AVERAGE;
+    update_average(false);
   }
 
   // Set up new day's total average steps
   if ((curr_time->tm_hour == 0 && curr_time->tm_min == 0) || !done_init) {
-    // s_daily_average = average_steps_to_index(averages, HEALTH_NUM_STEP_AVERAGES);
-    s_daily_average = FAKE_DAILY_AVERAGE;
+    update_average(true);
 
     if (done_init) {
       s_current_steps = 0;
       update_steps_buffer();
     }
   }
-  // free(averages);
   done_init = true;
 }
 
@@ -309,7 +339,6 @@ static void tick_handler(struct tm *tick_time, TimeUnits changed) {
 }
 
 static void activity_steps_handler(HealthEventType event, void *context) {
-  // health_service_metric_peek(HealthMetricStepCount, s_curr_day_id, 1, &s_current_steps);
   s_current_steps = health_service_sum_today(HealthMetricStepCount);
   update_steps_buffer();
 }
@@ -397,8 +426,8 @@ static void init() {
   health_service_events_subscribe(activity_steps_handler, NULL);
 
   // initialize current step values
-  // health_service_metric_peek(HealthMetricStepCount, s_curr_day_id, 1, &s_current_steps);
   s_current_steps = health_service_sum_today(HealthMetricStepCount);
+  APP_LOG(APP_LOG_LEVEL_INFO, "Steps so far today: %d", (int)s_current_steps);
   update_steps_buffer();
 
   // initialize average steps values
