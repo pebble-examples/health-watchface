@@ -309,20 +309,19 @@ static void update_average(bool daily) {
 
 static void update_steps_averages(struct tm *curr_time) {
   static bool done_init = false;
-  
-  // Update current average throughout day (15 min steps as per api)
-  if (curr_time->tm_min % 15 == 0 || !done_init) {
-    update_average(false);
-  }
 
   // Set up new day's total average steps
   if ((curr_time->tm_hour == 0 && curr_time->tm_min == 0) || !done_init) {
     update_average(true);
+    update_average(false);
 
     if (done_init) {
       s_current_steps = 0;
       update_steps_buffer();
     }
+  } else if (curr_time->tm_min % 15 == 0 || !done_init) {
+    // Update current average throughout day (15 min steps as per api)
+    update_average(false);
   }
   done_init = true;
 }
