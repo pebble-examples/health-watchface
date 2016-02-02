@@ -1,8 +1,8 @@
 {
   "uuid": "b378d562-4235-466c-bf90-138c0e3113eb",
-  "shortName": "health-watchface",
-  "longName": "health-watchface",
-  "companyName": "MakeAwesomeHappen",
+  "shortName": "Health Watchface",
+  "longName": "Health Watchface",
+  "companyName": "Pebble",
   "versionLabel": "1.0",
   "sdkVersion": "3",
   "targetPlatforms": ["basalt", "chalk"],
@@ -12,6 +12,9 @@
   "appKeys": {
     "dummy": 0
   },
+  "capabilities": [
+    "health"
+  ],
   "resources": {
     "media": [
       {
