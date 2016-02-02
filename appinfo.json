@@ -1,8 +1,8 @@
 {
   "uuid": "b378d562-4235-466c-bf90-138c0e3113eb",
-  "shortName": "health-watchface",
-  "longName": "health-watchface",
-  "companyName": "MakeAwesomeHappen",
+  "shortName": "Stride",
+  "longName": "Stride",
+  "companyName": "Pebble",
   "versionLabel": "1.0",
   "sdkVersion": "3",
   "targetPlatforms": ["basalt", "chalk"],
@@ -12,6 +12,9 @@
   "appKeys": {
     "dummy": 0
   },
+  "capabilities": [
+    "health"
+  ],
   "resources": {
     "media": [
       {
@@ -23,21 +26,6 @@
         "type": "png",
         "name": "GREEN_SHOE_LOGO",
         "file": "green_shoe.png"
-      },
-      {
-        "type": "font",
-        "name": "ZONAPRO_BOLD_FONT_19",
-        "file": "ZonaPro-Bold.ttf"
-      },
-      {
-        "type": "font",
-        "name": "ZONAPRO_BOLD_FONT_27",
-        "file": "ZonaPro-Bold.ttf"
-      },
-      {
-        "type": "font",
-        "name": "ZONAPRO_BOLD_FONT_30",
-        "file": "ZonaPro-Bold.ttf"
       }
     ]
   }

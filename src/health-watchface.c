@@ -8,13 +8,15 @@
 #define DIVX(a) (a / 1000)
 #define RECT_PERIMETER ((DISP_ROWS + DISP_COLS) * 2)
 
+#define PAST_DAYS_CONSIDERED 7
+
 static Window *s_main_window;
-static Layer *s_canvas_layer;
-static TextLayer *s_time_layer;
+static Layer *s_canvas_layer, *s_text_layer;
 static GBitmap *s_blue_shoe, *s_green_shoe;
-static GFont s_zonapro_font_small, s_zonapro_font_big;
+static GFont s_font_small, s_font_big, s_font_med;
 
 static char s_current_steps_buffer[] = "99,999";
+static char s_current_time_buffer[8];
 static uint32_t *s_curr_day_id;
 static int32_t s_current_steps;
 static uint16_t s_daily_average;
@@ -154,7 +156,6 @@ static void prv_fill_goal_line(GContext *ctx, int32_t current_average, int32_t d
 
 #if defined(PBL_RECT)
     GPoint line_inner_point = prv_inset_point(line_outer_point, line_length);
-
 #elif defined(PBL_ROUND)
     GRect inner_bounds = grect_inset(frame, GEdgeInsets(line_length));
     GPoint line_inner_point = prv_steps_to_point(current_average, day_average_steps, inner_bounds);
@@ -171,7 +172,7 @@ static void draw_steps_value(GRect bounds, GContext *ctx, GColor color, GBitmap 
   shoe_bitmap_box.size = gbitmap_get_bounds(s_green_shoe).size;
 
   int16_t text_width = graphics_text_layout_get_content_size(s_current_steps_buffer, 
-                                                              s_zonapro_font_small, 
+                                                              s_font_small, 
                                                               steps_text_box, 
                                                               GTextOverflowModeTrailingEllipsis, 
                                                               GTextAlignmentCenter).w;
@@ -188,7 +189,7 @@ static void draw_steps_value(GRect bounds, GContext *ctx, GColor color, GBitmap 
   shoe_bitmap_box.origin.y = PBL_IF_RECT_ELSE(60, 65);
 
   graphics_context_set_text_color(ctx, color);
-  graphics_draw_text(ctx, s_current_steps_buffer, s_zonapro_font_small, 
+  graphics_draw_text(ctx, s_current_steps_buffer, s_font_small, 
       steps_text_box, GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
   graphics_draw_bitmap_in_rect(ctx, bitmap, shoe_bitmap_box);
@@ -243,53 +244,85 @@ static void update_steps_buffer() {
 static void update_time() {
   // Get a tm structure
   time_t temp = time(NULL); 
-  struct tm *tick_time = localtime(&temp);
+  struct tm *time_now = localtime(&temp);
 
   // Write the current hours and minutes into a buffer
-  static char s_buffer[8];
-  strftime(s_buffer, sizeof(s_buffer), clock_is_24h_style() ?
-                                          "%H:%M%p" : "%I:%M%p", tick_time);
+  char *fmt_str = (time_now->tm_min < 10) ? "%d:0%d" : "%d:%d";
+  snprintf(s_current_time_buffer, sizeof(s_current_time_buffer), 
+    fmt_str, time_now->tm_hour, time_now->tm_min);
 
   // Remove 0 from start of time
-  if ('0' == s_buffer[0]) {
-    memmove(s_buffer, &s_buffer[1], sizeof(s_buffer)-1);
+  if ('0' == s_current_time_buffer[0]) {
+    memmove(s_current_time_buffer, &s_current_time_buffer[1], sizeof(s_current_time_buffer)-1);
   }
 
-  // Display this time on the TextLayer
-  text_layer_set_text(s_time_layer, s_buffer);
+  layer_mark_dirty(s_text_layer);
 }
 
-static uint16_t average_steps_to_index(HealthStepAverages *avg_steps, uint16_t step_index) {
-  uint16_t daily_average_steps = 0;
-  for (int i = 0; i < step_index; i++) {
-    if (avg_steps->average[i] != HEALTH_STEP_AVERAGES_UNKNOWN) {
-      daily_average_steps += avg_steps->average[i];
+static int calculate_average(int *data, int num_items) {
+  int result = 0;
+
+  int num_valid_items = 0;
+  for(int i = 0; i < num_items; i++) {
+    if(data[i] > 0) {
+      result += data[i];
+      num_valid_items++;
     }
   }
-  return daily_average_steps;
+  return result / num_valid_items;
+}
+
+static void update_average(bool daily) {
+  // Average of steps taken so far today over the last PAST_DAYS_CONSIDERED days
+  int *data = (int*)malloc(PAST_DAYS_CONSIDERED * sizeof(int));
+
+  for(int day = 0; day < PAST_DAYS_CONSIDERED; day++) {
+    time_t start = time_start_of_today() - (day * (24 * SECONDS_PER_HOUR));
+
+    time_t end;
+    if(daily) {
+      end = start + (24 * SECONDS_PER_HOUR);
+    } else {
+      end = start + (time(NULL) - time_start_of_today());
+    } 
+
+    HealthServiceAccessibilityMask mask = health_service_metric_accessible(HealthMetricStepCount, start, end);
+    if(mask == HealthServiceAccessibilityMaskAvailable) {
+      // Data is available, read day's sum
+      data[day] = (int)health_service_sum(HealthMetricStepCount, start, end);
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "%d steps for %d days ago", data[day], day);
+    } else {
+      data[day] = 0;
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "No data available for %d days ago", day);
+    }
+  }
+
+  if(daily) {
+    s_daily_average = calculate_average(data, PAST_DAYS_CONSIDERED);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Daily average: %d", s_daily_average);
+  } else {
+    s_current_average = calculate_average(data, PAST_DAYS_CONSIDERED);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Current average: %d", s_current_average);
+  }
+  free(data);
 }
 
 static void update_steps_averages(struct tm *curr_time) {
   static bool done_init = false;
-  HealthStepAverages *averages = malloc(sizeof(HealthStepAverages));
-  health_service_get_step_averages(TODAY, averages);
-
-  // Update current average throughout day (15 min steps as per api)
-  if (curr_time->tm_min % 15 == 0 || !done_init) {
-    s_current_average = average_steps_to_index(averages, 
-                                               curr_time->tm_hour * 4 + (curr_time->tm_min / 15));
-  }
 
   // Set up new day's total average steps
   if ((curr_time->tm_hour == 0 && curr_time->tm_min == 0) || !done_init) {
-    s_daily_average = average_steps_to_index(averages, HEALTH_NUM_STEP_AVERAGES);
+    update_average(true);
+    update_average(false);
 
     if (done_init) {
       s_current_steps = 0;
       update_steps_buffer();
     }
+  } else if (curr_time->tm_min % 15 == 0 || !done_init) {
+    // Update current average throughout day (15 min steps as per api)
+    update_average(false);
   }
-  free(averages);
   done_init = true;
 }
 
@@ -303,13 +336,12 @@ static void tick_handler(struct tm *tick_time, TimeUnits changed) {
   }
 }
 
-static void activity_steps_handler(HealthEventType event, HealthEventData *data,
-                                   void *context) {
-  health_service_metric_peek(HealthMetricStepCount, s_curr_day_id, 1, &s_current_steps);
+static void activity_steps_handler(HealthEventType event, void *context) {
+  s_current_steps = health_service_sum_today(HealthMetricStepCount);
   update_steps_buffer();
 }
 
-static void update_proc(Layer *layer, GContext *ctx) {
+static void progress_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
   const int fill_thickness = PBL_IF_RECT_ELSE(12, (180 - grect_inset(bounds, 
@@ -324,7 +356,7 @@ static void update_proc(Layer *layer, GContext *ctx) {
   GColor scheme;
   GBitmap *bitmap;
   if (s_current_steps >= (int)s_current_average) {
-    scheme  = GColorIslamicGreen;
+    scheme  = GColorJaegerGreen;
     bitmap = s_green_shoe;
   } else {
     scheme = GColorPictonBlue;
@@ -339,6 +371,34 @@ static void update_proc(Layer *layer, GContext *ctx) {
   draw_steps_value(bounds, ctx, scheme, bitmap);
 }
 
+static void text_update_proc(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+
+  // Get total width
+  int total_width = 0;
+  GSize time_size = graphics_text_layout_get_content_size(
+    s_current_time_buffer, s_font_big, bounds, GTextOverflowModeWordWrap, GTextAlignmentLeft);
+  total_width += time_size.w;
+  total_width += graphics_text_layout_get_content_size(
+    "AM", s_font_med, bounds, GTextOverflowModeWordWrap, GTextAlignmentLeft).w;
+
+  graphics_context_set_text_color(ctx, GColorWhite);
+  const int x_margin = (bounds.size.w - total_width) / 2;
+  int y_margin = PBL_IF_RECT_ELSE(8, 2);
+  const GRect time_rect = grect_inset(bounds, GEdgeInsets(-y_margin, 0, 0, x_margin));
+  graphics_draw_text(ctx, s_current_time_buffer, s_font_big, time_rect, 
+    GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
+
+  const time_t now = time(NULL);
+  const struct tm *time_now = localtime(&now);
+  const bool am = time_now->tm_hour < 12;
+  const int spacing = 2;
+  const GRect period_rect = grect_inset(bounds, 
+    GEdgeInsets(PBL_IF_RECT_ELSE(-2, 4), 0, 0, time_size.w + x_margin + spacing));
+  graphics_draw_text(ctx, am ? "AM" : "PM", s_font_med, period_rect, 
+    GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
+}
+
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect window_bounds = layer_get_bounds(window_layer);
@@ -346,30 +406,27 @@ static void window_load(Window *window) {
   s_green_shoe = gbitmap_create_with_resource(RESOURCE_ID_GREEN_SHOE_LOGO);
   s_blue_shoe = gbitmap_create_with_resource(RESOURCE_ID_BLUE_SHOE_LOGO);
 
-  s_zonapro_font_small = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_19));
+  s_font_small = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
+  s_font_med = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
 #if defined(PBL_RECT)
-  s_zonapro_font_big = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_27));
+  s_font_big = fonts_get_system_font(FONT_KEY_BITHAM_30_BLACK);
 #else
-  s_zonapro_font_big = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ZONAPRO_BOLD_FONT_30));
+  s_font_big = fonts_get_system_font(FONT_KEY_BITHAM_30_BLACK);
 #endif
 
   s_canvas_layer = layer_create(window_bounds);
-  layer_set_update_proc(s_canvas_layer, update_proc);
+  layer_set_update_proc(s_canvas_layer, progress_update_proc);
   layer_add_child(window_layer, s_canvas_layer);
 
-  s_time_layer = text_layer_create(
-      GRect(0, PBL_IF_RECT_ELSE(74, 80), window_bounds.size.w, 30));
-  text_layer_set_background_color(s_time_layer, GColorClear);
-  text_layer_set_text_color(s_time_layer, GColorWhite);
-  text_layer_set_font(s_time_layer, PBL_IF_RECT_ELSE(s_zonapro_font_big, s_zonapro_font_big));
-  text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
-
-  layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
+  const GEdgeInsets time_insets = GEdgeInsets(80, 0, 0, 0);
+  s_text_layer = layer_create(grect_inset(window_bounds, time_insets));
+  layer_set_update_proc(s_text_layer, text_update_proc);
+  layer_add_child(window_layer, s_text_layer);
 }
 
 static void window_unload(Window *window) {
   layer_destroy(s_canvas_layer);
-  text_layer_destroy(s_time_layer);
+  layer_destroy(s_text_layer);
   gbitmap_destroy(s_green_shoe);
   gbitmap_destroy(s_blue_shoe);
 }
@@ -392,7 +449,7 @@ static void init() {
   health_service_events_subscribe(activity_steps_handler, NULL);
 
   // initialize current step values
-  health_service_metric_peek(HealthMetricStepCount, s_curr_day_id, 1, &s_current_steps);
+  s_current_steps = health_service_sum_today(HealthMetricStepCount);
   update_steps_buffer();
 
   // initialize average steps values
