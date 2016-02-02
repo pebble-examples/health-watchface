@@ -11,12 +11,12 @@
 #define PAST_DAYS_CONSIDERED 7
 
 static Window *s_main_window;
-static Layer *s_canvas_layer;
-static TextLayer *s_time_layer;
+static Layer *s_canvas_layer, *s_text_layer;
 static GBitmap *s_blue_shoe, *s_green_shoe;
-static GFont s_font_small, s_font_big;
+static GFont s_font_small, s_font_big, s_font_med;
 
 static char s_current_steps_buffer[] = "99,999";
+static char s_current_time_buffer[8];
 static uint32_t *s_curr_day_id;
 static int32_t s_current_steps;
 static uint16_t s_daily_average;
@@ -244,20 +244,19 @@ static void update_steps_buffer() {
 static void update_time() {
   // Get a tm structure
   time_t temp = time(NULL); 
-  struct tm *tick_time = localtime(&temp);
+  struct tm *time_now = localtime(&temp);
 
   // Write the current hours and minutes into a buffer
-  static char s_buffer[8];
-  strftime(s_buffer, sizeof(s_buffer), clock_is_24h_style() ?
-                                          "%H:%M%p" : "%I:%M%p", tick_time);
+  char *fmt_str = (time_now->tm_min < 10) ? "%d:0%d" : "%d:%d";
+  snprintf(s_current_time_buffer, sizeof(s_current_time_buffer), 
+    fmt_str, time_now->tm_hour, time_now->tm_min);
 
   // Remove 0 from start of time
-  if ('0' == s_buffer[0]) {
-    memmove(s_buffer, &s_buffer[1], sizeof(s_buffer)-1);
+  if ('0' == s_current_time_buffer[0]) {
+    memmove(s_current_time_buffer, &s_current_time_buffer[1], sizeof(s_current_time_buffer)-1);
   }
 
-  // Display this time on the TextLayer
-  text_layer_set_text(s_time_layer, s_buffer);
+  layer_mark_dirty(s_text_layer);
 }
 
 static int calculate_average(int *data, int num_items) {
@@ -291,15 +290,19 @@ static void update_average(bool daily) {
     if(mask == HealthServiceAccessibilityMaskAvailable) {
       // Data is available, read day's sum
       data[day] = (int)health_service_sum(HealthMetricStepCount, start, end);
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "%d steps for %d days ago", data[day], day);
     } else {
       data[day] = 0;
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "No data available for %d days ago", day);
     }
   }
 
   if(daily) {
     s_daily_average = calculate_average(data, PAST_DAYS_CONSIDERED);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Daily average: %d", s_daily_average);
   } else {
     s_current_average = calculate_average(data, PAST_DAYS_CONSIDERED);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Current average: %d", s_current_average);
   }
   free(data);
 }
@@ -339,7 +342,7 @@ static void activity_steps_handler(HealthEventType event, void *context) {
   update_steps_buffer();
 }
 
-static void update_proc(Layer *layer, GContext *ctx) {
+static void progress_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
   const int fill_thickness = PBL_IF_RECT_ELSE(12, (180 - grect_inset(bounds, 
@@ -369,6 +372,34 @@ static void update_proc(Layer *layer, GContext *ctx) {
   draw_steps_value(bounds, ctx, scheme, bitmap);
 }
 
+static void text_update_proc(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+
+  // Get total width
+  int total_width = 0;
+  GSize time_size = graphics_text_layout_get_content_size(
+    s_current_time_buffer, s_font_big, bounds, GTextOverflowModeWordWrap, GTextAlignmentLeft);
+  total_width += time_size.w;
+  total_width += graphics_text_layout_get_content_size(
+    "AM", s_font_med, bounds, GTextOverflowModeWordWrap, GTextAlignmentLeft).w;
+
+  graphics_context_set_text_color(ctx, GColorWhite);
+  const int x_margin = (bounds.size.w - total_width) / 2;
+  int y_margin = PBL_IF_RECT_ELSE(8, 2);
+  const GRect time_rect = grect_inset(bounds, GEdgeInsets(-y_margin, 0, 0, x_margin));
+  graphics_draw_text(ctx, s_current_time_buffer, s_font_big, time_rect, 
+    GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
+
+  const time_t now = time(NULL);
+  const struct tm *time_now = localtime(&now);
+  const bool am = time_now->tm_hour < 12;
+  const int spacing = 2;
+  const GRect period_rect = grect_inset(bounds, 
+    GEdgeInsets(PBL_IF_RECT_ELSE(-2, 4), 0, 0, time_size.w + x_margin + spacing));
+  graphics_draw_text(ctx, am ? "AM" : "PM", s_font_med, period_rect, 
+    GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
+}
+
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect window_bounds = layer_get_bounds(window_layer);
@@ -377,29 +408,26 @@ static void window_load(Window *window) {
   s_blue_shoe = gbitmap_create_with_resource(RESOURCE_ID_BLUE_SHOE_LOGO);
 
   s_font_small = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
+  s_font_med = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
 #if defined(PBL_RECT)
-  s_font_big = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
+  s_font_big = fonts_get_system_font(FONT_KEY_BITHAM_30_BLACK);
 #else
-  s_font_big = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
+  s_font_big = fonts_get_system_font(FONT_KEY_BITHAM_30_BLACK);
 #endif
 
   s_canvas_layer = layer_create(window_bounds);
-  layer_set_update_proc(s_canvas_layer, update_proc);
+  layer_set_update_proc(s_canvas_layer, progress_update_proc);
   layer_add_child(window_layer, s_canvas_layer);
 
-  s_time_layer = text_layer_create(
-      GRect(0, PBL_IF_RECT_ELSE(74, 80), window_bounds.size.w, 30));
-  text_layer_set_background_color(s_time_layer, GColorClear);
-  text_layer_set_text_color(s_time_layer, GColorWhite);
-  text_layer_set_font(s_time_layer, PBL_IF_RECT_ELSE(s_font_big, s_font_big));
-  text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
-
-  layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
+  const GEdgeInsets time_insets = GEdgeInsets(80, 0, 0, 0);
+  s_text_layer = layer_create(grect_inset(window_bounds, time_insets));
+  layer_set_update_proc(s_text_layer, text_update_proc);
+  layer_add_child(window_layer, s_text_layer);
 }
 
 static void window_unload(Window *window) {
   layer_destroy(s_canvas_layer);
-  text_layer_destroy(s_time_layer);
+  layer_destroy(s_text_layer);
   gbitmap_destroy(s_green_shoe);
   gbitmap_destroy(s_blue_shoe);
 }
