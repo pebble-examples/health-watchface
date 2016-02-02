@@ -357,7 +357,7 @@ static void progress_update_proc(Layer *layer, GContext *ctx) {
   GColor scheme;
   GBitmap *bitmap;
   if (s_current_steps >= (int)s_current_average) {
-    scheme  = GColorIslamicGreen;
+    scheme  = GColorJaegerGreen;
     bitmap = s_green_shoe;
   } else {
     scheme = GColorPictonBlue;
