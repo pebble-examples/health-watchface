@@ -246,10 +246,15 @@ static void update_time() {
   time_t temp = time(NULL); 
   struct tm *time_now = localtime(&temp);
 
+  int hours = time_now->tm_hour;
+  if(!clock_is_24h_style()) {
+    hours -= (hours > 12) ? 12 : 0;
+  }
+
   // Write the current hours and minutes into a buffer
   char *fmt_str = (time_now->tm_min < 10) ? "%d:0%d" : "%d:%d";
   snprintf(s_current_time_buffer, sizeof(s_current_time_buffer), 
-    fmt_str, time_now->tm_hour, time_now->tm_min);
+    fmt_str, hours, time_now->tm_min);
 
   // Remove 0 from start of time
   if ('0' == s_current_time_buffer[0]) {
