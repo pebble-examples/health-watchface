@@ -8,6 +8,7 @@
 #define DIVX(a) (a / 1000)
 #define RECT_PERIMETER ((DISP_ROWS + DISP_COLS) * 2)
 
+#define DEBUG false
 #define PAST_DAYS_CONSIDERED 7
 
 static Window *s_main_window;
@@ -295,19 +296,19 @@ static void update_average(bool daily) {
     if(mask == HealthServiceAccessibilityMaskAvailable) {
       // Data is available, read day's sum
       data[day] = (int)health_service_sum(HealthMetricStepCount, start, end);
-      APP_LOG(APP_LOG_LEVEL_DEBUG, "%d steps for %d days ago", data[day], day);
+      if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "%d steps for %d days ago", data[day], day);
     } else {
       data[day] = 0;
-      APP_LOG(APP_LOG_LEVEL_DEBUG, "No data available for %d days ago", day);
+      if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "No data available for %d days ago", day);
     }
   }
 
   if(daily) {
     s_daily_average = calculate_average(data, PAST_DAYS_CONSIDERED);
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Daily average: %d", s_daily_average);
+    if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "Daily average: %d", s_daily_average);
   } else {
     s_current_average = calculate_average(data, PAST_DAYS_CONSIDERED);
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Current average: %d", s_current_average);
+    if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "Current average: %d", s_current_average);
   }
   free(data);
 }
@@ -370,8 +371,13 @@ static void progress_update_proc(Layer *layer, GContext *ctx) {
 
   graphics_context_set_antialiased(ctx, true);
 
-  prv_fill_outer_ring(ctx, s_current_steps, s_daily_average, fill_thickness, bounds, scheme);
-  prv_fill_goal_line(ctx, s_current_average, s_daily_average, 17, 4, bounds, GColorYellow);
+  if(s_daily_average > 0) {
+    prv_fill_outer_ring(ctx, s_current_steps, s_daily_average, fill_thickness, bounds, scheme);
+  }
+
+  if(s_current_average > 0) {
+    prv_fill_goal_line(ctx, s_current_average, s_daily_average, 17, 4, bounds, GColorYellow);
+  }
 
   draw_steps_value(bounds, ctx, scheme, bitmap);
 }
