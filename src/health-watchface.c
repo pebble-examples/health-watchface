@@ -11,14 +11,19 @@
 #define DEBUG false
 #define PAST_DAYS_CONSIDERED 7
 
+typedef enum {
+  AppKeyCurrentAverage = 0,
+  AppKeyDailyAverage,
+  AppKeyCurrentSteps
+} AppKey;
+
 static Window *s_main_window;
 static Layer *s_canvas_layer, *s_text_layer;
 static GBitmap *s_blue_shoe, *s_green_shoe;
 static GFont s_font_small, s_font_big, s_font_med;
 
-static char s_current_steps_buffer[] = "99,999";
+static char s_current_steps_buffer[8];
 static char s_current_time_buffer[8];
-static uint32_t *s_curr_day_id;
 static int32_t s_current_steps;
 static uint16_t s_daily_average;
 static uint16_t s_current_average;
@@ -27,7 +32,6 @@ static const uint32_t TOP_RIGHT = 72;
 static const uint32_t BOT_RIGHT = 240;
 static const uint32_t BOT_LEFT = 384;
 static const uint32_t TOP_LEFT = 552;
-
 
 /****************************** Render Functions ******************************/
 
@@ -232,6 +236,11 @@ static void draw_outer_dots(GRect bounds, GContext *ctx) {
 
 /************************************ UI **************************************/
 
+static struct tm* get_tm_now() {
+  time_t temp = time(NULL); 
+  return localtime(&temp);
+}
+
 static void update_steps_buffer() {
   int thousands = s_current_steps / 1000;
   int hundreds = s_current_steps % 1000;
@@ -244,23 +253,10 @@ static void update_steps_buffer() {
 
 static void update_time() {
   // Get a tm structure
-  time_t temp = time(NULL); 
-  struct tm *time_now = localtime(&temp);
+  struct tm *time_now = get_tm_now();
 
-  int hours = time_now->tm_hour;
-  if(!clock_is_24h_style()) {
-    hours -= (hours > 12) ? 12 : 0;
-  }
-
-  // Write the current hours and minutes into a buffer
-  char *fmt_str = (time_now->tm_min < 10) ? "%d:0%d" : "%d:%d";
-  snprintf(s_current_time_buffer, sizeof(s_current_time_buffer), 
-    fmt_str, hours, time_now->tm_min);
-
-  // Remove 0 from start of time
-  if ('0' == s_current_time_buffer[0]) {
-    memmove(s_current_time_buffer, &s_current_time_buffer[1], sizeof(s_current_time_buffer)-1);
-  }
+  strftime(s_current_time_buffer, sizeof(s_current_time_buffer),
+    clock_is_24h_style() ? "%H:%M" : "%I:%M", time_now);
 
   layer_mark_dirty(s_text_layer);
 }
@@ -305,16 +301,22 @@ static void update_average(bool daily) {
 
   if(daily) {
     s_daily_average = calculate_average(data, PAST_DAYS_CONSIDERED);
+    persist_write_int(AppKeyDailyAverage, s_daily_average);
     if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "Daily average: %d", s_daily_average);
   } else {
     s_current_average = calculate_average(data, PAST_DAYS_CONSIDERED);
+    persist_write_int(AppKeyCurrentAverage, s_current_average);
     if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "Current average: %d", s_current_average);
   }
   free(data);
 }
 
-static void update_steps_averages(struct tm *curr_time) {
+static void update_steps_averages() {
   static bool done_init = false;
+  const struct tm *curr_time = get_tm_now();
+
+  s_current_steps = health_service_sum_today(HealthMetricStepCount);
+  persist_write_int(AppKeyCurrentSteps, s_current_steps);
 
   // Set up new day's total average steps
   if ((curr_time->tm_hour == 0 && curr_time->tm_min == 0) || !done_init) {
@@ -334,7 +336,7 @@ static void update_steps_averages(struct tm *curr_time) {
 
 static void tick_handler(struct tm *tick_time, TimeUnits changed) {
   update_time();
-  update_steps_averages(tick_time);
+  update_steps_averages();
 
   // Redraw
   if (s_canvas_layer) {
@@ -404,8 +406,7 @@ static void text_update_proc(Layer *layer, GContext *ctx) {
     GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
 
   if(!clock_is_24h_style()) {
-    const time_t now = time(NULL);
-    const struct tm *time_now = localtime(&now);
+    const struct tm *time_now = get_tm_now();
     const bool am = time_now->tm_hour < 12;
     const int spacing = 2;
     const GRect period_rect = grect_inset(bounds, 
@@ -449,6 +450,10 @@ static void window_unload(Window *window) {
 
 /*********************************** App **************************************/
 
+static void load_health_handler(void *context) {
+  update_steps_averages();
+  update_steps_buffer();
+}
 
 static void init() {
   s_main_window = window_create();
@@ -464,14 +469,21 @@ static void init() {
 
   health_service_events_subscribe(activity_steps_handler, NULL);
 
-  // initialize current step values
-  s_current_steps = health_service_sum_today(HealthMetricStepCount);
-  update_steps_buffer();
+  // First time persist
+  if(!persist_exists(AppKeyCurrentSteps)) {
+    s_current_steps = 0;
+    s_current_average = 0;
+    s_daily_average = 0;
 
-  // initialize average steps values
-  const time_t now = time(NULL);
-  struct tm *time_now = localtime(&now);
-  update_steps_averages(time_now);
+    layer_mark_dirty(s_canvas_layer);
+  }
+
+  // Avoid half-second delay loading the app
+  app_timer_register(500, load_health_handler, NULL);
+  s_current_average = persist_read_int(AppKeyCurrentAverage);
+  s_daily_average = persist_read_int(AppKeyDailyAverage);
+  s_current_steps = persist_read_int(AppKeyCurrentSteps);
+  update_steps_buffer();
 }
 
 static void deinit() {
