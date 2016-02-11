@@ -106,13 +106,11 @@ static void draw_outer_dots(GContext *ctx, GRect bounds) {
     const uint16_t quarter_perimeter = rect_perimeter / 4;
     const int dot_radius = 2;
 
-    for(int i = quarter_perimeter; i <= rect_perimeter; i += quarter_perimeter) {
+    for(int i = 0; i <= rect_perimeter; i += quarter_perimeter) {
       // Put middle dots on each side of screen
       GPoint middle = steps_to_point(i, rect_perimeter, inset_bounds);
       graphics_context_set_fill_color(ctx, GColorDarkGray);
-      if(i != rect_perimeter) {
-        graphics_fill_circle(ctx, middle, dot_radius);
-      }
+      graphics_fill_circle(ctx, middle, dot_radius);
 
       // Puts two dots between each middle dot
       const int range = 36;
@@ -129,7 +127,7 @@ static void draw_outer_dots(GContext *ctx, GRect bounds) {
 #elif defined(PBL_ROUND)
     // Outer dots placed along inside circumference
     const int num_dots = 12;
-    for(int i = 1; i < num_dots; i++) {
+    for(int i = 0; i < num_dots; i++) {
       GPoint pos = gpoint_from_polar(inset_bounds, GOvalScaleModeFitCircle, DEG_TO_TRIGANGLE(i * 360 / num_dots));
 
       const int dot_radius = 2;
