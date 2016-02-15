@@ -47,13 +47,13 @@ static void update_average(AverageType type) {
         end = start + (time(NULL) - time_start_of_today());
         break;
       default:
-        APP_LOG(APP_LOG_LEVEL_ERROR, "Unknown average type!");
+        if(DEBUG) APP_LOG(APP_LOG_LEVEL_ERROR, "Unknown average type!");
         break;
     } 
 
     // Gather the data items for the last PAST_DAYS_CONSIDERED days
     HealthServiceAccessibilityMask mask = health_service_metric_accessible(HealthMetricStepCount, start, end);
-    if(mask == HealthServiceAccessibilityMaskAvailable) {
+    if(mask & HealthServiceAccessibilityMaskAvailable) {
       // Data is available, read day's sum
       data[day] = (int)health_service_sum(HealthMetricStepCount, start, end);
       if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "%d steps for %d days ago", data[day], day);
