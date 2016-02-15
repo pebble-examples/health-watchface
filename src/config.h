@@ -3,7 +3,7 @@
 #include <pebble.h>
 
 // Used to turn off logging
-#define DEBUG false
+#define DEBUG true
 
 // Number of days the averaging mechanism takes into account
 #define PAST_DAYS_CONSIDERED 7
