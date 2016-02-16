@@ -26,7 +26,7 @@ void data_set_current_average(int value);
 int data_get_daily_average();
 void data_set_daily_average(int value);
 
-void data_update_averages();
+void data_reload_averages();
 
 GFont data_get_font(FontSize size);
 
