@@ -8,7 +8,7 @@
 
 static void tick_handler(struct tm *tick_time, TimeUnits changed) {
   main_window_update_time(tick_time);
-  data_update_averages();
+  data_reload_averages();
   main_window_redraw();
 }
 

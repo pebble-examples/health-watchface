@@ -81,27 +81,32 @@ static void update_average(AverageType type) {
   }
 }
 
-void data_update_averages() {
+void data_update_steps_buffer() {
+  int thousands = s_current_steps / 1000;
+  int hundreds = s_current_steps % 1000;
+  if(thousands > 0) {
+    snprintf(s_current_steps_buffer, sizeof(s_current_steps_buffer), "%d,%03d", thousands, hundreds);
+  } else {
+    snprintf(s_current_steps_buffer, sizeof(s_current_steps_buffer), "%d", hundreds);
+  }
+
+  main_window_redraw();
+}
+
+static void load_health_data_handler(void *context) {
   const struct tm *time_now = util_get_tm();
 
   s_current_steps = health_service_sum_today(HealthMetricStepCount);
   persist_write_int(AppKeyCurrentSteps, s_current_steps);
 
-  // Set up new day's total average steps
-  if(time_now->tm_hour == 0 && time_now->tm_min == 0) {
-    update_average(AverageTypeCurrent);
-    update_average(AverageTypeDaily);
-  } else if (time_now->tm_min % 15 == 0) {
-    // Update current average throughout day
-    update_average(AverageTypeCurrent);
-  }
+  update_average(AverageTypeDaily);
+  update_average(AverageTypeCurrent);
 
   data_update_steps_buffer();
 }
 
-static void load_health_data_handler(void *context) {
-  data_update_averages();
-  data_update_steps_buffer();
+void data_reload_averages() {
+  app_timer_register(LOAD_DATA_DELAY, load_health_data_handler, NULL);
 }
 
 void data_init() {
@@ -117,17 +122,15 @@ void data_init() {
     s_current_steps = 0;
     s_current_average = 0;
     s_daily_average = 0;
-
-    main_window_redraw();
+  } else {
+    s_current_average = persist_read_int(AppKeyCurrentAverage);
+    s_daily_average = persist_read_int(AppKeyDailyAverage);
+    s_current_steps = persist_read_int(AppKeyCurrentSteps);
   }
-
-  s_current_average = persist_read_int(AppKeyCurrentAverage);
-  s_daily_average = persist_read_int(AppKeyDailyAverage);
-  s_current_steps = persist_read_int(AppKeyCurrentSteps);
   data_update_steps_buffer();
 
   // Avoid half-second delay loading the app by delaying API read
-  app_timer_register(LOAD_DATA_DELAY, load_health_data_handler, NULL);
+  data_reload_averages();
 }
 
 void data_deinit() {
@@ -174,16 +177,6 @@ GBitmap* data_get_blue_shoe() {
 
 GBitmap* data_get_green_shoe() {
   return s_green_shoe;
-}
-
-void data_update_steps_buffer() {
-  int thousands = s_current_steps / 1000;
-  int hundreds = s_current_steps % 1000;
-  if(thousands > 0) {
-    snprintf(s_current_steps_buffer, sizeof(s_current_steps_buffer), "%d,%03d", thousands, hundreds);
-  } else {
-    snprintf(s_current_steps_buffer, sizeof(s_current_steps_buffer), "%d", hundreds);
-  }
 }
 
 char* data_get_current_steps_buffer() {
