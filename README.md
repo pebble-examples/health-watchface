@@ -2,4 +2,4 @@
 
 ![](screenshots/chalk.png)
 
-Source code for the Stride health watchface.
+Source code for a reference copy of the Stride health watchface.
