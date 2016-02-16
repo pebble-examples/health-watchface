@@ -114,6 +114,8 @@ void main_window_update_time(struct tm* tick_time) {
 }
 
 void main_window_redraw() {
-  layer_mark_dirty(s_canvas_layer);
-  layer_mark_dirty(s_text_layer);
+  if(s_canvas_layer && s_text_layer) {
+    layer_mark_dirty(s_canvas_layer);
+    layer_mark_dirty(s_text_layer);
+  }
 }
