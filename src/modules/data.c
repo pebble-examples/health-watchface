@@ -66,29 +66,22 @@ static void update_average(AverageType type) {
   }
 }
 
-void data_update_averages() {
+static void load_health_data_handler(void *context) {
   const struct tm *time_now = util_get_tm();
 
   s_current_steps = health_service_sum_today(HealthMetricStepCount);
   persist_write_int(AppKeyCurrentSteps, s_current_steps);
 
-  // Set up new day's total average steps
-  if(time_now->tm_hour == 0 && time_now->tm_min == 0) {
-    update_average(AverageTypeCurrent);
-    update_average(AverageTypeDaily);
-  } else if (time_now->tm_min % 15 == 0) {
-    // Update current average throughout day
-    update_average(AverageTypeCurrent);
-  }
+  update_average(AverageTypeCurrent);
+  update_average(AverageTypeDaily);
 
   data_update_steps_buffer();
 }
 
-static void load_health_data_handler(void *context) {
-  if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "Getting health data...");
-
-  data_update_averages();
-  data_update_steps_buffer();
+void data_reload_averages() {
+  // Avoid half-second delay loading the app by delaying API read
+  app_timer_register(LOAD_DATA_DELAY, load_health_data_handler, NULL);
+  
 }
 
 void data_init() {
@@ -108,13 +101,13 @@ void data_init() {
     main_window_redraw();
   }
 
+  // Read cached values
   s_current_average = persist_read_int(AppKeyCurrentAverage);
   s_daily_average = persist_read_int(AppKeyDailyAverage);
   s_current_steps = persist_read_int(AppKeyCurrentSteps);
   data_update_steps_buffer();
 
-  // Avoid half-second delay loading the app by delaying API read
-  app_timer_register(LOAD_DATA_DELAY, load_health_data_handler, NULL);
+  data_reload_averages();
 }
 
 void data_deinit() {
