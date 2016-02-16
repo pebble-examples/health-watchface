@@ -1,4 +1,4 @@
-# stride
+# health-watchface
 
 ![](screenshots/chalk.png)
 
