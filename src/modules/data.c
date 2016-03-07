@@ -17,62 +17,47 @@ static GFont s_font_small, s_font_big, s_font_med;
 static int s_current_steps, s_daily_average, s_current_average;
 static char s_current_steps_buffer[8];
 
-static int calculate_average(int *data, int num_items) {
-  int result = 0;
-  int num_valid_items = 0;
-
-  for(int i = 0; i < num_items; i++) {
-    if(data[i] > 0) {
-      result += data[i];
-      num_valid_items++;
-    }
-  }
-
-  return result / num_valid_items;
-}
-
 static void update_average(AverageType type) {
-  int data[PAST_DAYS_CONSIDERED];
+  // Start time is midnight
+  const time_t start = time_start_of_today();
 
-  for(int day = 0; day < PAST_DAYS_CONSIDERED; day++) {
-    // Start time is midnight, minus the number of seconds per day for each day
-    const time_t start = time_start_of_today() - (day * (24 * SECONDS_PER_HOUR));
+  time_t end = start;
+  int steps = 0;
+  switch(type) {
+    case AverageTypeDaily:
+      // One whole day
+      end = start + SECONDS_PER_DAY;
+      break;
+    case AverageTypeCurrent:
+      // Time from midnight to now
+      end = start + (time(NULL) - time_start_of_today());
+      break;
+    default:
+      if(DEBUG) APP_LOG(APP_LOG_LEVEL_ERROR, "Unknown average type!");
+      break;
+  } 
 
-    time_t end = start;
-    switch(type) {
-      case AverageTypeDaily:
-        end = start + (24 * SECONDS_PER_HOUR);
-        break;
-      case AverageTypeCurrent:
-        end = start + (time(NULL) - time_start_of_today());
-        break;
-      default:
-        if(DEBUG) APP_LOG(APP_LOG_LEVEL_ERROR, "Unknown average type!");
-        break;
-    } 
-
-    // Gather the data items for the last PAST_DAYS_CONSIDERED days
-    HealthServiceAccessibilityMask mask = health_service_metric_accessible(HealthMetricStepCount, start, end);
-    if(mask & HealthServiceAccessibilityMaskAvailable) {
-      // Data is available, read day's sum
-      data[day] = (int)health_service_sum(HealthMetricStepCount, start, end);
-      if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "%d steps for %d days ago", data[day], day);
-    } else {
-      data[day] = 0;
-      if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "No data available for %d days ago", day);
-    }
+  // Check the average data is available
+  HealthServiceAccessibilityMask mask = health_service_metric_averaged_accessible(
+                                HealthMetricStepCount, start, end, HealthServiceTimeScopeDaily);
+  if(mask & HealthServiceAccessibilityMaskAvailable) {
+    // Data is available, read it
+    steps = (int)health_service_sum_averaged(HealthMetricStepCount, start, end, 
+                                                                    HealthServiceTimeScopeDaily);
+  } else {
+    if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "No data available for daily average");
   }
 
   // Store the calculated value
   switch(type) {
     case AverageTypeDaily:
-      s_daily_average = calculate_average(data, PAST_DAYS_CONSIDERED);
+      s_daily_average = steps;
       persist_write_int(AppKeyDailyAverage, s_daily_average);
 
       if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "Daily average: %d", s_daily_average);
       break;
     case AverageTypeCurrent:
-      s_current_average = calculate_average(data, PAST_DAYS_CONSIDERED);
+      s_current_average = steps;
       persist_write_int(AppKeyCurrentAverage, s_current_average);
 
       if(DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, "Current average: %d", s_current_average);

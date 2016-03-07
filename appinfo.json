@@ -3,7 +3,7 @@
   "shortName": "Stride",
   "longName": "Stride",
   "companyName": "Pebble",
-  "versionLabel": "1.4",
+  "versionLabel": "1.5",
   "sdkVersion": "3",
   "targetPlatforms": ["basalt", "chalk"],
   "watchapp": {
