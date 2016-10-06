@@ -5,7 +5,7 @@
   "companyName": "Pebble",
   "versionLabel": "1.5",
   "sdkVersion": "3",
-  "targetPlatforms": ["basalt", "chalk"],
+  "targetPlatforms": ["basalt", "chalk", "diorite"],
   "watchapp": {
     "watchface": true
   },
